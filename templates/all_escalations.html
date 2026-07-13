@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% import "_status_badge.html" as b %}
+{% block title %}All Escalations{% endblock %}
+{% block content %}
+<h1>All Escalations</h1>
+<form method="get" class="filters-bar card">
+  <div class="field">
+    <label>User</label>
+    <select name="user_id">
+      <option value="">-- Any --</option>
+      {% for u in users %}<option value="{{ u.id }}" {{ 'selected' if user_filter==u.id }}>{{ u.full_name }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="field">
+    <label>Role of User</label>
+    <select name="user_role">
+      <option value="any" {{ 'selected' if user_role_filter=='any' }}>Recruiter OR Sales Rep OR Compliance Specialist</option>
+      <option value="recruiter" {{ 'selected' if user_role_filter=='recruiter' }}>Recruiter</option>
+      <option value="sales_rep" {{ 'selected' if user_role_filter=='sales_rep' }}>Sales Rep</option>
+      <option value="compliance" {{ 'selected' if user_role_filter=='compliance' }}>Compliance Specialist</option>
+    </select>
+  </div>
+  <div class="field">
+    <label>Stage / Status</label>
+    <select name="status">
+      <option value="">-- Any --</option>
+      {% for s in statuses %}<option value="{{ s }}" {{ 'selected' if status_filter==s }}>{{ s }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="field"><button class="btn" type="submit">Apply Filters</button></div>
+</form>
+
+<div class="card">
+  <table>
+    <thead><tr><th>ID</th><th>Candidate</th><th>Facility</th><th>Type</th><th>Status</th><th>Recruiter</th><th>Sales Rep</th><th>Compliance Specialist</th></tr></thead>
+    <tbody>
+      {% for e in escalations %}
+      <tr onclick="window.location='{{ url_for('view_escalation', escalation_id=e.id) }}'" style="cursor:pointer;">
+        <td>#{{ e.id }}</td>
+        <td>{{ e.candidate }}</td>
+        <td>{{ e.facility }}</td>
+        <td>{{ e.type }}</td>
+        <td>{{ b.status_badge(e.status) }}</td>
+        <td>{{ e.recruiter.full_name if e.recruiter }}</td>
+        <td>{{ e.sales_rep.full_name if e.sales_rep }}</td>
+        <td>{{ e.compliance_specialist.full_name if e.compliance_specialist }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" style="color:#6b7a86;">No escalations match these filters.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

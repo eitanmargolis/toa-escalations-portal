@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}Create an Escalation{% endblock %}
+{% block content %}
+<h1>Create an Escalation</h1>
+<form method="post" class="card">
+  <div class="section-header">Information</div>
+  <div class="form-grid">
+    <div>
+      <label>Type *</label>
+      <select name="type" required>
+        <option value="">-- Select --</option>
+        {% for t in types %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label>Candidate *</label>
+      <input type="text" name="candidate" required>
+    </div>
+    <div>
+      <label>Client *</label>
+      <input type="text" name="client" required>
+    </div>
+    <div>
+      <label>Facility *</label>
+      <input type="text" name="facility" required>
+    </div>
+    <div class="full">
+      <label>Assignment URL *</label>
+      <input type="url" name="assignment_url" required>
+    </div>
+    <div>
+      <label>Discussed with Manager *</label>
+      <select name="discussed_with_manager" required>
+        <option value="">-- Select --</option>
+        {% for v in yes_no %}<option value="{{ v }}">{{ v }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label>Clinical Call Required</label>
+      <select name="clinical_call_required">
+        <option value="">-- Select --</option>
+        {% for v in yes_no %}<option value="{{ v }}">{{ v }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label>Recruiter *</label>
+      <select name="recruiter_id" required>
+        <option value="">-- Select --</option>
+        {% for u in users %}<option value="{{ u.id }}">{{ u.full_name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label>Sales Rep *</label>
+      <select name="sales_rep_id" required>
+        <option value="">-- Select --</option>
+        {% for u in users %}<option value="{{ u.id }}">{{ u.full_name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label>Compliance Specialist *</label>
+      <select name="compliance_specialist_id" required>
+        <option value="">-- Select --</option>
+        {% for u in users %}<option value="{{ u.id }}">{{ u.full_name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label>Recruiter Manager</label>
+      <input type="text" disabled placeholder="Auto-set from Recruiter's manager on save">
+    </div>
+  </div>
+
+  <div class="section-header">Escalation Detail</div>
+  <div class="form-grid">
+    <div class="full">
+      <label>Details/What Happened?</label>
+      <textarea name="details"></textarea>
+    </div>
+    <div>
+      <label>Action To</label>
+      <select name="action_to_id">
+        <option value="">-- Select --</option>
+        {% for u in users %}<option value="{{ u.id }}">{{ u.full_name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label>Danger of Cancelling?</label>
+      <select name="danger_of_cancelling">
+        <option value="">-- Select --</option>
+        {% for v in yes_no %}<option value="{{ v }}">{{ v }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="full">
+      <label>Action Item</label>
+      <textarea name="action_item"></textarea>
+    </div>
+    <div>
+      <label><input type="checkbox" name="escalated_to_client" style="width:auto;"> Escalated to Client</label>
+    </div>
+    <div>
+      <label>Best Day to Call Traveler</label>
+      <input type="date" name="best_day_to_call">
+    </div>
+    <div>
+      <label>Best Time to Call Traveler</label>
+      <select name="best_time_to_call">
+        <option value="">-- Select --</option>
+        {% for v in best_times %}<option value="{{ v }}">{{ v }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label>Time Zone</label>
+      <select name="time_zone">
+        <option value="">-- Select --</option>
+        {% for v in time_zones %}<option value="{{ v }}">{{ v }}</option>{% endfor %}
+      </select>
+    </div>
+  </div>
+
+  <p style="margin-top:20px;">
+    <button class="btn" type="submit">Create Escalation</button>
+  </p>
+</form>
+{% endblock %}

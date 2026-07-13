@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}Escalation #{{ esc.id }}{% endblock %}
+{% block content %}
+<h1>Escalation #{{ esc.id }} &mdash; {{ esc.candidate }}</h1>
+<div style="display:flex; gap:20px; align-items:flex-start;">
+  <div style="flex:2; min-width:0;">
+    <form method="post" class="card">
+      <div class="section-header">Information</div>
+      <div class="form-grid">
+        <div>
+          <label>Type</label>
+          <select name="type">
+            {% for t in types %}<option value="{{ t }}" {{ 'selected' if esc.type==t }}>{{ t }}</option>{% endfor %}
+          </select>
+        </div>
+        <div><label>Candidate</label><input type="text" name="candidate" value="{{ esc.candidate }}"></div>
+        <div><label>Client</label><input type="text" name="client" value="{{ esc.client }}"></div>
+        <div><label>Facility</label><input type="text" name="facility" value="{{ esc.facility }}"></div>
+        <div class="full"><label>Assignment URL</label><input type="url" name="assignment_url" value="{{ esc.assignment_url }}"></div>
+        <div>
+          <label>Discussed with Manager</label>
+          <select name="discussed_with_manager">
+            {% for v in yes_no %}<option value="{{ v }}" {{ 'selected' if esc.discussed_with_manager==v }}>{{ v }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label>Clinical Call Required</label>
+          <select name="clinical_call_required">
+            <option value="">-- None --</option>
+            {% for v in yes_no %}<option value="{{ v }}" {{ 'selected' if esc.clinical_call_required==v }}>{{ v }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label>Status</label>
+          <select name="status">
+            {% for s in statuses %}
+              <option value="{{ s }}" {{ 'selected' if esc.status==s }} {{ 'disabled' if (s in closed_statuses and not can_edit_closed_status) }}>{{ s }}{{ ' (Manager/Admin only)' if (s in closed_statuses and not can_edit_closed_status) }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label>Recruiter</label>
+          <select name="recruiter_id">
+            {% for u in users %}<option value="{{ u.id }}" {{ 'selected' if esc.recruiter_id==u.id }}>{{ u.full_name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label>Sales Rep</label>
+          <select name="sales_rep_id">
+            {% for u in users %}<option value="{{ u.id }}" {{ 'selected' if esc.sales_rep_id==u.id }}>{{ u.full_name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label>Compliance Specialist</label>
+          <select name="compliance_specialist_id">
+            {% for u in users %}<option value="{{ u.id }}" {{ 'selected' if esc.compliance_specialist_id==u.id }}>{{ u.full_name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label>Recruiter Manager</label>
+          <input type="text" disabled value="{{ esc.recruiter_manager.full_name if esc.recruiter_manager else '-' }}">
+        </div>
+      </div>
+
+      <div class="section-header">Escalation Detail</div>
+      <div class="form-grid">
+        <div class="full"><label>Details/What Happened?</label><textarea name="details">{{ esc.details or '' }}</textarea></div>
+        <div>
+          <label>Action To</label>
+          <select name="action_to_id">
+            <option value="">-- None --</option>
+            {% for u in users %}<option value="{{ u.id }}" {{ 'selected' if esc.action_to_id==u.id }}>{{ u.full_name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label>Danger of Cancelling?</label>
+          <select name="danger_of_cancelling">
+            <option value="">-- None --</option>
+            {% for v in yes_no %}<option value="{{ v }}" {{ 'selected' if esc.danger_of_cancelling==v }}>{{ v }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="full"><label>Action Item</label><textarea name="action_item">{{ esc.action_item or '' }}</textarea></div>
+        <div><label><input type="checkbox" name="escalated_to_client" style="width:auto;" {{ 'checked' if esc.escalated_to_client }}> Escalated to Client</label></div>
+        <div><label>Best Day to Call Traveler</label><input type="date" name="best_day_to_call" value="{{ esc.best_day_to_call or '' }}"></div>
+        <div>
+          <label>Best Time to Call Traveler</label>
+          <select name="best_time_to_call">
+            <option value="">-- None --</option>
+            {% for v in best_times %}<option value="{{ v }}" {{ 'selected' if esc.best_time_to_call==v }}>{{ v }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label>Time Zone</label>
+          <select name="time_zone">
+            <option value="">-- None --</option>
+            {% for v in time_zones %}<option value="{{ v }}" {{ 'selected' if esc.time_zone==v }}>{{ v }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="section-header">Resolution</div>
+      <div class="form-grid">
+        <div class="full"><label>Complaint Outcome</label><textarea name="complaint_outcome">{{ esc.complaint_outcome or '' }}</textarea></div>
+        <div><label><input type="checkbox" name="clinical_team_save" style="width:auto;" {{ 'checked' if esc.clinical_team_save }}> Clinical Team Save</label></div>
+        <div class="full"><label>Facility Resolution</label><textarea name="facility_resolution">{{ esc.facility_resolution or '' }}</textarea></div>
+        <div><label><input type="checkbox" name="cancel" style="width:auto;" {{ 'checked' if esc.cancel }}> Cancel?</label></div>
+        <div>
+          <label>Is Traveler Canceled?</label>
+          <select name="is_traveler_canceled">
+            <option value="">-- None --</option>
+            {% for v in yes_no %}<option value="{{ v }}" {{ 'selected' if esc.is_traveler_canceled==v }}>{{ v }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <p style="margin-top:20px;"><button class="btn" type="submit">Save Changes</button></p>
+    </form>
+  </div>
+
+  <div style="flex:1; min-width:320px;">
+    <div class="card">
+      <h2 style="margin-top:0;">Discussion</h2>
+      <div class="comment-feed">
+        {% for c in esc.comments %}
+          <div class="comment">
+            <div class="meta">{{ c.user.full_name }} &middot; {{ c.created_at.strftime('%b %d, %Y %I:%M %p') }}</div>
+            <div>{{ c.body }}</div>
+          </div>
+        {% else %}
+          <p style="color:#6b7a86;">No comments yet.</p>
+        {% endfor %}
+      </div>
+      <form method="post" action="{{ url_for('add_comment', escalation_id=esc.id) }}">
+        <textarea name="body" id="commentBody" placeholder="Add a comment... use @ to tag a teammate" list="userNames"></textarea>
+        <datalist id="userNames">
+          {% for u in users %}<option value="@{{ u.full_name }}">{% endfor %}
+        </datalist>
+        <p><button class="btn btn-accent" type="submit">Post Comment</button></p>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

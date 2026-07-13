@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{% block title %}TOA Escalations{% endblock %} - Coast Medical Service</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&family=Muli:wght@300;400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  {% import "_brand_icon.html" as icon %}
+  {% if current_user.is_authenticated %}
+  <div class="topbar">
+    <div class="logo-mark">{{ icon.brand_icon() }}</div>
+    <div class="brand-title">COAST MEDICAL SERVICE &mdash; TOA Escalations</div>
+    <div class="spacer"></div>
+    <span class="user-chip">{{ current_user.full_name }} ({{ current_user.role }})</span>
+    <a href="{{ url_for('logout') }}">Log out</a>
+  </div>
+  <div class="tabs">
+    <a href="{{ url_for('new_escalation') }}" class="{{ 'active' if request.endpoint=='new_escalation' }}">Create an Escalation</a>
+    <a href="{{ url_for('my_open_escalations') }}" class="{{ 'active' if request.endpoint=='my_open_escalations' }}">My Open Escalations</a>
+    <a href="{{ url_for('all_escalations') }}" class="{{ 'active' if request.endpoint in ['all_escalations','view_escalation'] }}">All Escalations</a>
+    <a href="{{ url_for('reporting') }}" class="{{ 'active' if request.endpoint=='reporting' }}">Reporting</a>
+    {% if current_user.is_admin() %}
+    <a href="{{ url_for('manage_users') }}" class="{{ 'active' if request.endpoint=='manage_users' }}">Manage Users</a>
+    {% endif %}
+  </div>
+  {% endif %}
+  <div class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="flash flash-{{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </div>
+</body>
+</html>

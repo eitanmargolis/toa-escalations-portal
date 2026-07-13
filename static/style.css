@@ -1,0 +1,131 @@
+:root {
+  /* Coast Medical Service brand palette (from Logo Guidelines) */
+  --brand-teal-light: #95cbcb;   /* Pantone 3242 C */
+  --brand-cyan: #66b5da;         /* Pantone 2199 C */
+  --brand-blue: #304585;         /* Pantone 7687 C - primary logo blue */
+  --brand-navy: #002c54;         /* Pantone 295 C - secondary deep navy */
+  --brand-orange: #e25100;       /* secondary - call to action */
+  --brand-yellow: #f3b632;       /* secondary - accent */
+  --brand-gray-light: #dce0e8;   /* secondary - backgrounds/borders */
+  --brand-gray: #646468;         /* secondary - muted text */
+  --brand-black: #191e24;        /* secondary - near-black text */
+
+  --brand-primary: var(--brand-navy);
+  --brand-accent: var(--brand-cyan);
+  --brand-bg: #f4f7f9;
+  --text-dark: var(--brand-black);
+  --border-color: var(--brand-gray-light);
+  --danger: #c0392b;
+  --success: #1b7a43;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: "Muli", "Montserrat", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: var(--brand-bg);
+  color: var(--text-dark);
+}
+
+.topbar {
+  background: var(--brand-primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  padding: 10px 24px;
+  gap: 16px;
+}
+.topbar .logo-mark { width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; }
+.topbar .logo-mark svg { width: 34px; height: 34px; }
+.topbar .brand-title { font-family: "Montserrat", sans-serif; font-weight: 700; font-size: 18px; letter-spacing: 0.01em; }
+.topbar .spacer { flex: 1; }
+.topbar .user-chip { font-size: 14px; opacity: 0.9; }
+.topbar a { color: #fff; text-decoration: none; margin-left: 16px; font-size: 14px; }
+
+.tabs {
+  background: #fff;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  padding: 0 24px;
+}
+.tabs a {
+  padding: 14px 18px;
+  color: var(--text-dark);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: "Montserrat", sans-serif;
+  border-bottom: 3px solid transparent;
+}
+.tabs a.active {
+  border-bottom-color: var(--brand-accent);
+  color: var(--brand-primary);
+}
+.tabs a:hover { color: var(--brand-blue); }
+
+.container { padding: 24px; max-width: 1200px; margin: 0 auto; }
+
+.card {
+  background: #fff;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+h1, h2 { font-family: "Montserrat", sans-serif; color: var(--brand-primary); }
+
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border-color); }
+th { background: #eef2f6; color: var(--brand-primary); font-family: "Montserrat", sans-serif; }
+tr:hover { background: #f7fafc; }
+
+.badge { padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 700; display: inline-block; }
+.badge-open { background: #e5f2f8; color: var(--brand-blue); }
+.badge-pending { background: #fdf3e0; color: #9a6c00; }
+.badge-clinical { background: #eae7f7; color: #5b3fb8; }
+.badge-approved { background: #e6f7ec; color: var(--success); }
+.badge-denied, .badge-closed { background: #fdeceb; color: var(--danger); }
+
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 20px; }
+.form-grid .full { grid-column: 1 / -1; }
+label { font-size: 13px; font-weight: 700; display: block; margin-bottom: 4px; color: var(--brand-gray); font-family: "Montserrat", sans-serif; }
+input[type=text], input[type=url], input[type=date], input[type=email], input[type=password], select, textarea {
+  width: 100%; padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 14px;
+  font-family: "Muli", sans-serif;
+}
+textarea { min-height: 80px; }
+
+.btn {
+  display: inline-block; background: var(--brand-primary); color: #fff; border: none;
+  padding: 9px 18px; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; text-decoration: none;
+  font-family: "Montserrat", sans-serif;
+}
+.btn:hover { background: var(--brand-blue); }
+.btn-accent { background: var(--brand-orange); }
+.btn-accent:hover { background: #c24600; }
+.btn-secondary { background: var(--brand-gray); }
+.btn-secondary:hover { background: #52525a; }
+
+.flash { padding: 10px 14px; border-radius: 6px; margin-bottom: 14px; font-size: 14px; }
+.flash-error { background: #fdeceb; color: var(--danger); border: 1px solid #f3c9c4; }
+.flash-success { background: #e6f7ec; color: var(--success); border: 1px solid #bfe6cc; }
+
+.filters-bar { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; align-items: flex-end; }
+.filters-bar .field { min-width: 180px; }
+
+.report-layout { display: flex; gap: 20px; align-items: flex-start; }
+.report-main { flex: 1; min-width: 0; overflow-x: auto; }
+.report-sidebar { width: 320px; flex-shrink: 0; }
+.filter-row { display: flex; gap: 6px; margin-bottom: 8px; align-items: center; }
+.filter-row select, .filter-row input { font-size: 12px; padding: 5px; }
+.section-title { font-family: "Montserrat", sans-serif; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--brand-gray); margin: 14px 0 6px; }
+.checkbox-list { max-height: 160px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 6px; padding: 8px; }
+.checkbox-list label { font-weight: 400; display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font-family: "Muli", sans-serif; }
+
+.comment-feed { max-height: 400px; overflow-y: auto; margin-bottom: 12px; }
+.comment { padding: 10px; border-bottom: 1px solid var(--border-color); font-size: 14px; }
+.comment .meta { font-size: 12px; color: var(--brand-gray); margin-bottom: 4px; }
+.mention { color: var(--brand-blue); font-weight: 700; }
+
+.section-header { font-family: "Montserrat", sans-serif; font-size: 15px; font-weight: 700; color: var(--brand-primary); margin: 18px 0 8px; border-bottom: 2px solid var(--border-color); padding-bottom: 4px; }

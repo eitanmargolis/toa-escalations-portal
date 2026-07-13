@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}Reporting{% endblock %}
+{% block content %}
+<h1>Reporting</h1>
+<div class="report-layout">
+  <div class="report-main card">
+    <p style="color:#6b7a86;">{{ escalations|length }} record(s) match your current filters.</p>
+    <table>
+      <thead>
+        <tr>{% for label, key in report_fields %}{% if key in selected_fields %}<th>{{ label }}</th>{% endif %}{% endfor %}</tr>
+      </thead>
+      <tbody>
+        {% for e in escalations %}
+        <tr>
+          {% for label, key in report_fields %}
+            {% if key in selected_fields %}
+              <td>
+                {% set val = e[key] if key in ['id'] else e.__dict__.get(key) %}
+                {% if key in ['recruiter_id','sales_rep_id','compliance_specialist_id','recruiter_manager_id','action_to_id'] %}
+                  {{ users_by_id.get(val, '-') }}
+                {% elif val is sameas true %}Yes
+                {% elif val is sameas false %}No
+                {% else %}{{ val if val is not none else '-' }}
+                {% endif %}
+              </td>
+            {% endif %}
+          {% endfor %}
+        </tr>
+        {% else %}
+        <tr><td colspan="{{ selected_fields|length }}" style="color:#6b7a86;">No records match.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="report-sidebar">
+    <form method="get" class="card">
+      <div class="section-title">Columns to Include</div>
+      <div class="checkbox-list">
+        {% for label, key in report_fields %}
+        <label><input type="checkbox" name="fields" value="{{ key }}" {{ 'checked' if key in selected_fields }}> {{ label }}</label>
+        {% endfor %}
+      </div>
+
+      <div class="section-title">Quick Filters</div>
+      <label>Type</label>
+      <select name="type_filter">
+        <option value="">-- Any --</option>
+        {% for t in types %}<option value="{{ t }}" {{ 'selected' if type_filter==t }}>{{ t }}</option>{% endfor %}
+      </select>
+      <br><br>
+      <label>Status</label>
+      <select name="status_filter">
+        <option value="">-- Any --</option>
+        {% for s in statuses %}<option value="{{ s }}" {{ 'selected' if status_filter==s }}>{{ s }}</option>{% endfor %}
+      </select>
+
+      <div class="section-title">Filter Criteria</div>
+      <label>Combine using</label>
+      <select name="logic">
+        <option value="AND" {{ 'selected' if logic=='AND' }}>AND</option>
+        <option value="OR" {{ 'selected' if logic=='OR' }}>OR</option>
+      </select>
+      <br><br>
+      <div id="filterRows">
+        {% for flt in filters %}
+        <div class="filter-row">
+          <select name="filter_field_{{ loop.index0 }}">
+            {% for label, key in report_fields %}<option value="{{ key }}" {{ 'selected' if flt.field==key }}>{{ label }}</option>{% endfor %}
+          </select>
+          <select name="filter_op_{{ loop.index0 }}">
+            {% for op in operators %}<option value="{{ op }}" {{ 'selected' if flt.operator==op }}>{{ op }}</option>{% endfor %}
+          </select>
+          <input type="text" name="filter_val_{{ loop.index0 }}" value="{{ flt.value }}">
+        </div>
+        {% endfor %}
+      </div>
+      <button type="button" class="btn btn-secondary" onclick="addFilterRow()" style="margin-bottom:10px;">+ Add Filter</button>
+      <br>
+      <button class="btn" type="submit">Run Report</button>
+    </form>
+
+    <form method="post" action="{{ url_for('save_report_view') }}" class="card" id="saveForm">
+      <div class="section-title">Save This View</div>
+      <input type="text" name="view_name" placeholder="View name" required>
+      <input type="hidden" name="logic" value="{{ logic }}">
+      <input type="hidden" name="type_filter" value="{{ type_filter }}">
+      <input type="hidden" name="status_filter" value="{{ status_filter }}">
+      <div id="saveFieldsHidden"></div>
+      <div id="saveFiltersHidden"></div>
+      <br>
+      <button class="btn btn-accent" type="submit">Save Report View</button>
+    </form>
+
+    {% if saved_views %}
+    <div class="card">
+      <div class="section-title">Saved Views</div>
+      {% for v in saved_views %}
+        <p><a href="{{ url_for('load_report_view', view_id=v.id) }}">{{ v.name }}</a> <span style="color:#6b7a86;font-size:12px;">({{ v.created_by.full_name if v.created_by }})</span></p>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+let filterIdx = {{ filters|length }};
+function addFilterRow() {
+  const row = document.createElement('div');
+  row.className = 'filter-row';
+  row.innerHTML = `
+    <select name="filter_field_${filterIdx}">
+      {% for label, key in report_fields %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+    </select>
+    <select name="filter_op_${filterIdx}">
+      {% for op in operators %}<option value="{{ op }}">{{ op }}</option>{% endfor %}
+    </select>
+    <input type="text" name="filter_val_${filterIdx}">
+  `;
+  document.getElementById('filterRows').appendChild(row);
+  filterIdx++;
+}
+
+// Keep the "Save This View" form in sync with the current filter panel selections
+document.querySelector('form[method="get"]').addEventListener('submit', function() {
+  syncSaveForm();
+});
+function syncSaveForm() {
+  const getForm = document.querySelector('form[method="get"]');
+  const fieldsHidden = document.getElementById('saveFieldsHidden');
+  const filtersHidden = document.getElementById('saveFiltersHidden');
+  fieldsHidden.innerHTML = '';
+  filtersHidden.innerHTML = '';
+  getForm.querySelectorAll('input[name="fields"]:checked').forEach(cb => {
+    const hidden = document.createElement('input');
+    hidden.type = 'hidden'; hidden.name = 'fields'; hidden.value = cb.value;
+    fieldsHidden.appendChild(hidden);
+  });
+  getForm.querySelectorAll('#filterRows .filter-row').forEach((row, i) => {
+    row.querySelectorAll('select, input').forEach(el => {
+      const hidden = document.createElement('input');
+      hidden.type = 'hidden'; hidden.name = el.name; hidden.value = el.value;
+      filtersHidden.appendChild(hidden);
+    });
+  });
+}
+document.getElementById('saveForm').addEventListener('submit', syncSaveForm);
+syncSaveForm();
+</script>
+{% endblock %}

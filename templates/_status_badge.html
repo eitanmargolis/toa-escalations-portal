@@ -1,0 +1,8 @@
+{% macro status_badge(status) %}
+  {% set cls = {
+    'Open': 'badge-open', 'Pending Approval': 'badge-pending', 'Clinical Acknowledged': 'badge-clinical',
+    'Approved': 'badge-approved', 'Denied': 'badge-denied', 'Closed - Resolved': 'badge-closed',
+    'Closed - Canceled': 'badge-closed'
+  } %}
+  <span class="badge {{ cls.get(status, 'badge-open') }}">{{ status }}</span>
+{% endmacro %}

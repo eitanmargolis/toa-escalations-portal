@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Manage Users{% endblock %}
+{% block content %}
+<h1>Manage Users</h1>
+<p style="color:#6b7a86;">Admin only.</p>
+
+<div class="card">
+  <h2 style="margin-top:0;">Add User</h2>
+  <form method="post" action="{{ url_for('create_user') }}" class="form-grid">
+    <div><label>First Name</label><input type="text" name="first_name" required></div>
+    <div><label>Last Name</label><input type="text" name="last_name" required></div>
+    <div><label>Email</label><input type="email" name="email" required></div>
+    <div>
+      <label>Role</label>
+      <select name="role">{% for r in roles %}<option value="{{ r }}">{{ r }}</option>{% endfor %}</select>
+    </div>
+    <div class="full">
+      <label>Manager</label>
+      <select name="manager_id">
+        <option value="">-- None --</option>
+        {% for u in users %}<option value="{{ u.id }}">{{ u.full_name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="full"><button class="btn" type="submit">Create User</button></div>
+  </form>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0;">Existing Users</h2>
+  <table>
+    <thead><tr><th>First Name</th><th>Last Name</th><th>Email</th><th>Role</th><th>Manager</th><th></th></tr></thead>
+    <tbody>
+      {% for u in users %}
+      <tr>
+        <form method="post" action="{{ url_for('edit_user', user_id=u.id) }}">
+        <td><input type="text" name="first_name" value="{{ u.first_name }}"></td>
+        <td><input type="text" name="last_name" value="{{ u.last_name }}"></td>
+        <td><input type="email" name="email" value="{{ u.email }}"></td>
+        <td>
+          <select name="role">
+            {% for r in roles %}<option value="{{ r }}" {{ 'selected' if u.role==r }}>{{ r }}</option>{% endfor %}
+          </select>
+        </td>
+        <td>
+          <select name="manager_id">
+            <option value="">-- None --</option>
+            {% for m in users %}{% if m.id != u.id %}<option value="{{ m.id }}" {{ 'selected' if u.manager_id==m.id }}>{{ m.full_name }}</option>{% endif %}{% endfor %}
+          </select>
+        </td>
+        <td>
+          <button class="btn" type="submit">Save</button>
+        </form>
+        <form method="post" action="{{ url_for('delete_user', user_id=u.id) }}" style="display:inline;" onsubmit="return confirm('Delete this user?');">
+          <button class="btn btn-secondary" type="submit">Delete</button>
+        </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
