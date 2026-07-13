@@ -562,6 +562,13 @@ def seed_admin():
 
 with app.app_context():
     db.create_all()
+    _seed_email = os.environ.get("SEED_ADMIN_EMAIL")
+    if _seed_email and not User.query.filter_by(email=_seed_email).first():
+        _admin = User(first_name="Admin", last_name="User", email=_seed_email, role="Admin")
+        _admin.set_password(os.environ.get("SEED_ADMIN_PASSWORD", "ChangeMe123!"))
+        db.session.add(_admin)
+        db.session.commit()
+        print(f"Seeded admin {_seed_email}")
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
