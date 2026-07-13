@@ -103,7 +103,7 @@ class User(UserMixin, db.Model):
     manager_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     manager = db.relationship("User", remote_side=[id])
     invite_token = db.Column(db.String(64), nullable=True)
-reset_token = db.Column(db.String(64), nullable=True)
+    reset_token = db.Column(db.String(64), nullable=True)
     reset_token_expires = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
