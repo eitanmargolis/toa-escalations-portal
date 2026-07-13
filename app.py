@@ -9,6 +9,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash, abo
 from flask_login import (
     LoginManager, login_user, logout_user, login_required, current_user
 )
+from sqlalchemy import inspect, text
 
 from models import (
     db, User, Escalation, Comment, SavedReportView,
@@ -606,8 +607,32 @@ def seed_admin():
     print(f"Seeded admin {email}")
 
 
+def _sync_missing_columns():
+    """Best-effort auto-migration: add any model columns that exist in the
+    Python models but are missing from the live database table. This avoids
+    needing a full migration tool for simple additive schema changes."""
+    inspector = inspect(db.engine)
+    for model in [User, Escalation, Comment, SavedReportView]:
+        table_name = model.__tablename__
+        if not inspector.has_table(table_name):
+            continue
+        existing_cols = {c["name"] for c in inspector.get_columns(table_name)}
+        for col in model.__table__.columns:
+            if col.name in existing_cols:
+                continue
+            try:
+                col_type = col.type.compile(db.engine.dialect)
+                with db.engine.connect() as conn:
+                    conn.execute(text(f'ALTER TABLE "{table_name}" ADD COLUMN "{col.name}" {col_type}'))
+                    conn.commit()
+                print(f"Auto-migration: added missing column {table_name}.{col.name}")
+            except Exception as exc:
+                print(f"Auto-migration: could not add column {table_name}.{col.name}: {exc}")
+
+
 with app.app_context():
     db.create_all()
+    _sync_missing_columns()
     _seed_email = os.environ.get("SEED_ADMIN_EMAIL")
     if _seed_email and not User.query.filter_by(email=_seed_email).first():
         _admin = User(first_name="Admin", last_name="User", email=_seed_email, role="Admin")
