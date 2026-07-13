@@ -106,3 +106,25 @@ def send_new_comment_email(recipient_user, escalation, comment_author, base_url)
     <p><a href="{link}">Click HERE to view this Escalation Record</a></p>
     """
     send_email(recipient_user.email, subject, body)
+def send_welcome_email(user, base_url, token):
+    link = f"{base_url}/reset-password/{token}"
+    subject = "Welcome to the Coast Medical Service TOA Escalations Portal"
+    body = f"""
+    <p>Hi {user.first_name},</p>
+    <p>An account has been created for you on the Coast Medical Service TOA Escalations Portal.</p>
+    <p><a href="{link}">Click HERE to set your password</a> and log in for the first time.</p>
+    <p>This link expires in 7 days.</p>
+    """
+    send_email(user.email, subject, body)
+
+
+def send_password_reset_email(user, base_url, token):
+    link = f"{base_url}/reset-password/{token}"
+    subject = "Reset Your Password - TOA Escalations Portal"
+    body = f"""
+    <p>Hi {user.first_name},</p>
+    <p>We received a request to reset your password on the TOA Escalations Portal.</p>
+    <p><a href="{link}">Click HERE to reset your password</a>.</p>
+    <p>This link expires in 2 hours. If you didn't request this, you can safely ignore this email.</p>
+    """
+    send_email(user.email, subject, body)

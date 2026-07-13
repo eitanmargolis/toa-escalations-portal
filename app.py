@@ -2,7 +2,7 @@ import os
 import re
 import json
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import wraps
 
 from flask import Flask, render_template, request, redirect, url_for, flash, abort, jsonify
@@ -18,6 +18,7 @@ from models import (
 from email_utils import (
     send_action_needed_email, send_new_escalation_email,
     send_mention_email, send_new_comment_email,
+    send_welcome_email, send_password_reset_email,
 )
 
 app = Flask(__name__)
@@ -76,6 +77,49 @@ def login():
 def logout():
     logout_user()
     return redirect(url_for("login"))
+
+
+@app.route("/forgot-password", methods=["GET", "POST"])
+def forgot_password():
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
+        user = User.query.filter(db.func.lower(User.email) == email).first()
+        if user:
+            user.reset_token = secrets.token_urlsafe(32)
+            user.reset_token_expires = datetime.utcnow() + timedelta(hours=2)
+            db.session.commit()
+            send_password_reset_email(user, base_url(), user.reset_token)
+        flash("If that email exists in our system, a password reset link has been sent.", "success")
+        return redirect(url_for("login"))
+    return render_template("forgot_password.html")
+
+
+@app.route("/reset-password/<token>", methods=["GET", "POST"])
+def reset_password(token):
+    user = User.query.filter_by(reset_token=token).first()
+    token_valid = bool(user and user.reset_token_expires and user.reset_token_expires >= datetime.utcnow())
+
+    if not token_valid:
+        flash("This link is invalid or has expired. Please request a new one.", "error")
+        return redirect(url_for("forgot_password"))
+
+    if request.method == "POST":
+        password = request.form.get("password", "")
+        confirm = request.form.get("confirm_password", "")
+        if len(password) < 8:
+            flash("Password must be at least 8 characters.", "error")
+            return render_template("reset_password.html", token=token)
+        if password != confirm:
+            flash("Passwords do not match.", "error")
+            return render_template("reset_password.html", token=token)
+        user.set_password(password)
+        user.reset_token = None
+        user.reset_token_expires = None
+        db.session.commit()
+        flash("Your password has been set. You can now log in.", "success")
+        return redirect(url_for("login"))
+
+    return render_template("reset_password.html", token=token)
 
 
 # ---------------------------------------------------------------------------
@@ -505,11 +549,13 @@ def create_user():
         role=f.get("role", "User"),
         manager_id=f.get("manager_id") or None,
     )
-    temp_password = secrets.token_urlsafe(9)
-    user.set_password(temp_password)
+    user.set_password(secrets.token_urlsafe(16))
+    user.reset_token = secrets.token_urlsafe(32)
+    user.reset_token_expires = datetime.utcnow() + timedelta(days=7)
     db.session.add(user)
     db.session.commit()
-    flash(f"User {user.full_name} created. Temporary password: {temp_password}", "success")
+    send_welcome_email(user, base_url(), user.reset_token)
+    flash(f"User {user.full_name} created. A welcome email has been sent so they can set their password.", "success")
     return redirect(url_for("manage_users"))
 
 
