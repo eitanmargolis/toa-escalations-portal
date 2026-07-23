@@ -8,10 +8,19 @@ db = SQLAlchemy()
 # ---------------------------------------------------------------------------
 # Picklist values (single source of truth - used by forms, validation, filters)
 # ---------------------------------------------------------------------------
-ROLES = ["Admin", "Manager", "User"]
+ROLES = ["Admin", "Manager", "Recruiter", "Account Manager", "Compliance Specialist"]
+
+# Roles that are NOT Admin/Manager - i.e. everyday portal users
+STANDARD_ROLES = ["Recruiter", "Account Manager", "Compliance Specialist"]
+
+# Which portal role fills which Escalation lookup field
+ROLE_FOR_RECRUITER_FIELD = "Recruiter"
+ROLE_FOR_SALES_REP_FIELD = "Account Manager"
+ROLE_FOR_COMPLIANCE_FIELD = "Compliance Specialist"
 
 ESCALATION_TYPES = [
-    "Clinical",
+    "Clinical - Traveler Initiated",
+    "Clinical - Client Initiated",
     "Compliance & Credentialing",
     "Payroll & Timekeeping",
     "Performance & Conduct",
@@ -22,23 +31,32 @@ ESCALATION_TYPES = [
     "Other",
 ]
 
+CLINICAL_TYPES = ["Clinical - Traveler Initiated", "Clinical - Client Initiated"]
+
+SUBTYPES_BY_TYPE = {
+    "Clinical - Traveler Initiated": [
+        "Personal", "Unit Concern", "Patient Care", "Pre-Start Cancel", "Relias Coaching", "Other",
+    ],
+    "Clinical - Client Initiated": [
+        "Patient Care", "Professionalism", "Attendance", "Other",
+    ],
+}
+
 YES_NO = ["Yes", "No"]
 
 STATUS_VALUES = [
     "Open",
-    "Pending Approval",
     "Clinical Acknowledged",
-    "Approved",
-    "Denied",
+    "In Process",
+    "Clinical Call Complete",
+    "Needs Follow Up",
     "Closed - Resolved",
     "Closed - Canceled",
 ]
 
 # Statuses that keep a record in "My Open Escalations"
-OPEN_STATUSES = ["Open", "Pending Approval", "Clinical Acknowledged"]
-
-# Statuses only Manager/Admin can set
-CLOSED_STATUSES = ["Denied", "Closed - Resolved", "Closed - Canceled"]
+CLOSED_STATUSES = ["Closed - Resolved", "Closed - Canceled"]
+OPEN_STATUSES = [s for s in STATUS_VALUES if s not in CLOSED_STATUSES]
 
 BEST_TIME_SLOTS = [
     "8:00 AM - 9:00 AM",
@@ -57,6 +75,7 @@ TIME_ZONES = [
     "Central Standard Time",
     "Eastern Standard Time",
     "Mountain Standard Time",
+    "Alaska Standard Time",
     "Hawaii Standard Time",
 ]
 
@@ -65,11 +84,11 @@ REPORT_FIELDS = [
     ("Escalation ID", "id"),
     ("Created At", "created_at"),
     ("Type", "type"),
+    ("Subtype", "subtype"),
     ("Candidate", "candidate"),
-    ("Client", "client"),
     ("Facility", "facility"),
     ("Assignment URL", "assignment_url"),
-    ("Discussed with Manager", "discussed_with_manager"),
+    ("Discussed with Coast Manager", "discussed_with_manager"),
     ("Clinical Call Required", "clinical_call_required"),
     ("Status", "status"),
     ("Recruiter", "recruiter_id"),
@@ -87,7 +106,6 @@ REPORT_FIELDS = [
     ("Complaint Outcome", "complaint_outcome"),
     ("Clinical Team Save", "clinical_team_save"),
     ("Facility Resolution", "facility_resolution"),
-    ("Cancel?", "cancel"),
     ("Is Traveler Canceled?", "is_traveler_canceled"),
 ]
 
@@ -99,7 +117,7 @@ class User(UserMixin, db.Model):
     last_name = db.Column(db.String(80), nullable=False)
     email = db.Column(db.String(255), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=True)
-    role = db.Column(db.String(20), nullable=False, default="User")  # Admin / Manager / User
+    role = db.Column(db.String(30), nullable=False, default="Recruiter")  # Admin / Manager / Recruiter / Account Manager / Compliance Specialist
     manager_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     manager = db.relationship("User", remote_side=[id])
     invite_token = db.Column(db.String(64), nullable=True)
@@ -125,6 +143,9 @@ class User(UserMixin, db.Model):
     def is_manager(self):
         return self.role == "Manager"
 
+    def is_manager_or_admin(self):
+        return self.role in ("Admin", "Manager")
+
 
 class Escalation(db.Model):
     __tablename__ = "escalations"
@@ -135,14 +156,16 @@ class Escalation(db.Model):
 
     # --- Information ---
     type = db.Column(db.String(50), nullable=False)
+    subtype = db.Column(db.String(50), nullable=True)
     candidate = db.Column(db.String(255), nullable=False)
-    client = db.Column(db.String(255), nullable=False)
+    client = db.Column(db.String(255), nullable=True)  # deprecated field, kept for backward compatibility - no longer on the page layout
     facility = db.Column(db.String(255), nullable=False)
     assignment_url = db.Column(db.String(500), nullable=False)
     discussed_with_manager = db.Column(db.String(10), nullable=False)
     clinical_call_required = db.Column(db.String(10), nullable=True)
     status = db.Column(db.String(30), nullable=False, default="Open")
 
+    # --- Related Users ---
     recruiter_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     recruiter = db.relationship("User", foreign_keys=[recruiter_id])
 
@@ -166,14 +189,17 @@ class Escalation(db.Model):
     best_time_to_call = db.Column(db.String(30), nullable=True)
     time_zone = db.Column(db.String(40), nullable=True)
 
+    # --- Confidential Information (Manager/Admin only) ---
+    confidential_notes = db.Column(db.Text, nullable=True)
+
     # --- Resolution ---
     complaint_outcome = db.Column(db.Text, nullable=True)
     clinical_team_save = db.Column(db.Boolean, default=False)
     facility_resolution = db.Column(db.Text, nullable=True)
-    cancel = db.Column(db.Boolean, default=False)
     is_traveler_canceled = db.Column(db.String(10), nullable=True)
 
     comments = db.relationship("Comment", backref="escalation", cascade="all, delete-orphan", order_by="Comment.created_at")
+    attachments = db.relationship("Attachment", backref="escalation", cascade="all, delete-orphan", order_by="Attachment.uploaded_at")
 
     def user_ids_involved(self):
         return {self.recruiter_id, self.sales_rep_id, self.compliance_specialist_id,
@@ -188,6 +214,20 @@ class Comment(db.Model):
     user = db.relationship("User")
     body = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    attachment_filename = db.Column(db.String(255), nullable=True)
+    attachment_stored_name = db.Column(db.String(255), nullable=True)
+
+
+class Attachment(db.Model):
+    __tablename__ = "attachments"
+    id = db.Column(db.Integer, primary_key=True)
+    escalation_id = db.Column(db.Integer, db.ForeignKey("escalations.id"), nullable=False)
+    uploaded_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    uploaded_by = db.relationship("User")
+    filename = db.Column(db.String(255), nullable=False)
+    stored_name = db.Column(db.String(255), nullable=False)
+    is_confidential = db.Column(db.Boolean, default=False)
+    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
 class SavedReportView(db.Model):

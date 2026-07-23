@@ -1,24 +1,45 @@
 {% extends "base.html" %}
+{% import "_status_badge.html" as b %}
 {% block title %}Escalation #{{ esc.id }}{% endblock %}
 {% block content %}
-<h1>Escalation #{{ esc.id }} &mdash; {{ esc.candidate }}</h1>
+<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:20px; margin-bottom:8px;">
+  <h1 style="margin:0;">Escalation #{{ esc.id }} &mdash; {{ esc.candidate }}</h1>
+  <div style="min-width:260px;">
+    <label>Status</label>
+    <select name="status" id="statusSelect" {{ 'disabled' if not can_manage }} form="mainEscalationForm">
+      {% for s in statuses %}<option value="{{ s }}" {{ 'selected' if esc.status==s }}>{{ s }}</option>{% endfor %}
+    </select>
+    {% if not can_manage %}<p style="font-size:12px;color:var(--brand-gray);margin:4px 0 0;">Only Managers/Admins can change Status.</p>{% endif %}
+  </div>
+</div>
+
 <div style="display:flex; gap:20px; align-items:flex-start;">
   <div style="flex:2; min-width:0;">
-    <form method="post" class="card">
+    <form method="post" class="card" id="mainEscalationForm" enctype="multipart/form-data">
       <div class="section-header">Information</div>
       <div class="form-grid">
         <div>
           <label>Type</label>
-          <select name="type">
+          <select name="type" id="typeField">
             {% for t in types %}<option value="{{ t }}" {{ 'selected' if esc.type==t }}>{{ t }}</option>{% endfor %}
           </select>
         </div>
+        <div id="subtypeWrapper" style="{{ '' if esc.type in clinical_types else 'display:none;' }}">
+          <label>Subtype</label>
+          <select name="subtype" id="subtypeField">
+            <option value="">-- Select --</option>
+            {% if esc.type in clinical_types %}
+              {% for s in subtypes_by_type.get(esc.type, []) %}
+                <option value="{{ s }}" {{ 'selected' if esc.subtype==s }}>{{ s }}</option>
+              {% endfor %}
+            {% endif %}
+          </select>
+        </div>
         <div><label>Candidate</label><input type="text" name="candidate" value="{{ esc.candidate }}"></div>
-        <div><label>Client</label><input type="text" name="client" value="{{ esc.client }}"></div>
         <div><label>Facility</label><input type="text" name="facility" value="{{ esc.facility }}"></div>
         <div class="full"><label>Assignment URL</label><input type="url" name="assignment_url" value="{{ esc.assignment_url }}"></div>
         <div>
-          <label>Discussed with Manager</label>
+          <label>Discussed with Coast Manager?</label>
           <select name="discussed_with_manager">
             {% for v in yes_no %}<option value="{{ v }}" {{ 'selected' if esc.discussed_with_manager==v }}>{{ v }}</option>{% endfor %}
           </select>
@@ -30,30 +51,26 @@
             {% for v in yes_no %}<option value="{{ v }}" {{ 'selected' if esc.clinical_call_required==v }}>{{ v }}</option>{% endfor %}
           </select>
         </div>
-        <div>
-          <label>Status</label>
-          <select name="status">
-            {% for s in statuses %}
-              <option value="{{ s }}" {{ 'selected' if esc.status==s }} {{ 'disabled' if (s in closed_statuses and not can_edit_closed_status) }}>{{ s }}{{ ' (Manager/Admin only)' if (s in closed_statuses and not can_edit_closed_status) }}</option>
-            {% endfor %}
-          </select>
-        </div>
+      </div>
+
+      <div class="section-header">Related Users</div>
+      <div class="form-grid">
         <div>
           <label>Recruiter</label>
           <select name="recruiter_id">
-            {% for u in users %}<option value="{{ u.id }}" {{ 'selected' if esc.recruiter_id==u.id }}>{{ u.full_name }}</option>{% endfor %}
+            {% for u in recruiters %}<option value="{{ u.id }}" {{ 'selected' if esc.recruiter_id==u.id }}>{{ u.full_name }}</option>{% endfor %}
           </select>
         </div>
         <div>
           <label>Sales Rep</label>
           <select name="sales_rep_id">
-            {% for u in users %}<option value="{{ u.id }}" {{ 'selected' if esc.sales_rep_id==u.id }}>{{ u.full_name }}</option>{% endfor %}
+            {% for u in sales_reps %}<option value="{{ u.id }}" {{ 'selected' if esc.sales_rep_id==u.id }}>{{ u.full_name }}</option>{% endfor %}
           </select>
         </div>
         <div>
           <label>Compliance Specialist</label>
           <select name="compliance_specialist_id">
-            {% for u in users %}<option value="{{ u.id }}" {{ 'selected' if esc.compliance_specialist_id==u.id }}>{{ u.full_name }}</option>{% endfor %}
+            {% for u in compliance_specialists %}<option value="{{ u.id }}" {{ 'selected' if esc.compliance_specialist_id==u.id }}>{{ u.full_name }}</option>{% endfor %}
           </select>
         </div>
         <div>
@@ -69,7 +86,7 @@
           <label>Action To</label>
           <select name="action_to_id">
             <option value="">-- None --</option>
-            {% for u in users %}<option value="{{ u.id }}" {{ 'selected' if esc.action_to_id==u.id }}>{{ u.full_name }}</option>{% endfor %}
+            {% for u in all_users %}<option value="{{ u.id }}" {{ 'selected' if esc.action_to_id==u.id }}>{{ u.full_name }}</option>{% endfor %}
           </select>
         </div>
         <div>
@@ -96,14 +113,40 @@
             {% for v in time_zones %}<option value="{{ v }}" {{ 'selected' if esc.time_zone==v }}>{{ v }}</option>{% endfor %}
           </select>
         </div>
+        <div class="full">
+          <label>Attachments</label>
+          {% for a in esc.attachments if not a.is_confidential %}
+            <p style="margin:2px 0;"><a href="{{ url_for('download_attachment', attachment_id=a.id) }}">{{ a.filename }}</a>
+            <span style="color:var(--brand-gray);font-size:12px;"> &middot; uploaded by {{ a.uploaded_by.full_name if a.uploaded_by }}</span></p>
+          {% else %}
+            <p style="color:var(--brand-gray);font-size:13px;">No documents attached yet.</p>
+          {% endfor %}
+          <input type="file" name="attachments" multiple>
+        </div>
       </div>
+
+      {% if can_manage %}
+      <div class="section-header">Confidential Information <span style="font-size:11px;font-weight:400;color:var(--brand-gray);">(Manager/Admin only)</span></div>
+      <div class="form-grid">
+        <div class="full"><label>Notes</label><textarea name="confidential_notes">{{ esc.confidential_notes or '' }}</textarea></div>
+        <div class="full">
+          <label>Confidential Attachments</label>
+          {% for a in esc.attachments if a.is_confidential %}
+            <p style="margin:2px 0;"><a href="{{ url_for('download_attachment', attachment_id=a.id) }}">{{ a.filename }}</a>
+            <span style="color:var(--brand-gray);font-size:12px;"> &middot; uploaded by {{ a.uploaded_by.full_name if a.uploaded_by }}</span></p>
+          {% else %}
+            <p style="color:var(--brand-gray);font-size:13px;">No confidential documents attached yet.</p>
+          {% endfor %}
+          <input type="file" name="confidential_attachments" multiple>
+        </div>
+      </div>
+      {% endif %}
 
       <div class="section-header">Resolution</div>
       <div class="form-grid">
         <div class="full"><label>Complaint Outcome</label><textarea name="complaint_outcome">{{ esc.complaint_outcome or '' }}</textarea></div>
         <div><label><input type="checkbox" name="clinical_team_save" style="width:auto;" {{ 'checked' if esc.clinical_team_save }}> Clinical Team Save</label></div>
         <div class="full"><label>Facility Resolution</label><textarea name="facility_resolution">{{ esc.facility_resolution or '' }}</textarea></div>
-        <div><label><input type="checkbox" name="cancel" style="width:auto;" {{ 'checked' if esc.cancel }}> Cancel?</label></div>
         <div>
           <label>Is Traveler Canceled?</label>
           <select name="is_traveler_canceled">
@@ -123,21 +166,60 @@
       <div class="comment-feed">
         {% for c in esc.comments %}
           <div class="comment">
-            <div class="meta">{{ c.user.full_name }} &middot; {{ c.created_at.strftime('%b %d, %Y %I:%M %p') }}</div>
+            <div class="meta"><span class="comment-author">{{ c.user.full_name }}</span> &middot; <span class="comment-time" data-utc="{{ c.created_at.isoformat() }}Z">{{ c.created_at.strftime('%b %d, %Y %I:%M %p') }} UTC</span></div>
             <div>{{ c.body }}</div>
+            {% if c.attachment_filename %}
+              <div style="margin-top:4px;"><a href="{{ url_for('download_comment_attachment', comment_id=c.id) }}">📎 {{ c.attachment_filename }}</a></div>
+            {% endif %}
           </div>
         {% else %}
-          <p style="color:#6b7a86;">No comments yet.</p>
+          <p style="color:var(--brand-gray);">No comments yet.</p>
         {% endfor %}
       </div>
-      <form method="post" action="{{ url_for('add_comment', escalation_id=esc.id) }}">
+      <form method="post" action="{{ url_for('add_comment', escalation_id=esc.id) }}" enctype="multipart/form-data">
         <textarea name="body" id="commentBody" placeholder="Add a comment... use @ to tag a teammate" list="userNames"></textarea>
         <datalist id="userNames">
-          {% for u in users %}<option value="@{{ u.full_name }}">{% endfor %}
+          {% for u in all_users %}<option value="@{{ u.full_name }}">{% endfor %}
         </datalist>
+        <p><label style="font-weight:400;font-size:13px;">Attach a file (optional)</label><input type="file" name="attachment"></p>
         <p><button class="btn btn-accent" type="submit">Post Comment</button></p>
       </form>
     </div>
   </div>
 </div>
+
+<script>
+const SUBTYPES_BY_TYPE = {{ subtypes_by_type|tojson }};
+const CLINICAL_TYPES = {{ clinical_types|tojson }};
+const CURRENT_SUBTYPE = {{ (esc.subtype or "")|tojson }};
+const typeField = document.getElementById('typeField');
+const subtypeWrapper = document.getElementById('subtypeWrapper');
+const subtypeField = document.getElementById('subtypeField');
+
+function syncSubtype(preserveCurrent) {
+  const type = typeField.value;
+  if (CLINICAL_TYPES.includes(type)) {
+    subtypeWrapper.style.display = '';
+    const options = SUBTYPES_BY_TYPE[type] || [];
+    subtypeField.innerHTML = '<option value="">-- Select --</option>' + options.map(o => {
+      const sel = (preserveCurrent && o === CURRENT_SUBTYPE) ? ' selected' : '';
+      return `<option value="${o}"${sel}>${o}</option>`;
+    }).join('');
+  } else {
+    subtypeWrapper.style.display = 'none';
+    subtypeField.innerHTML = '';
+  }
+}
+typeField.addEventListener('change', () => syncSubtype(false));
+syncSubtype(true);
+
+// Convert comment timestamps to the viewer's own browser-local time zone
+document.querySelectorAll('.comment-time').forEach(el => {
+  const utc = el.getAttribute('data-utc');
+  if (!utc) return;
+  const d = new Date(utc);
+  if (isNaN(d.getTime())) return;
+  el.textContent = d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+});
+</script>
 {% endblock %}

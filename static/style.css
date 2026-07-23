@@ -126,6 +126,7 @@ textarea { min-height: 80px; }
 .comment-feed { max-height: 400px; overflow-y: auto; margin-bottom: 12px; }
 .comment { padding: 10px; border-bottom: 1px solid var(--border-color); font-size: 14px; }
 .comment .meta { font-size: 12px; color: var(--brand-gray); margin-bottom: 4px; }
+.comment-author { font-weight: 700; font-size: 15px; color: var(--brand-primary); }
 .mention { color: var(--brand-blue); font-weight: 700; }
 
 .section-header { font-family: "Montserrat", sans-serif; font-size: 15px; font-weight: 700; color: var(--brand-primary); margin: 18px 0 8px; border-bottom: 2px solid var(--border-color); padding-bottom: 4px; }

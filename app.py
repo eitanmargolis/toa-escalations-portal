@@ -2,24 +2,31 @@ import os
 import re
 import json
 import secrets
+import uuid
 from datetime import datetime, timedelta
 from functools import wraps
 
-from flask import Flask, render_template, request, redirect, url_for, flash, abort, jsonify
+from flask import (
+    Flask, render_template, request, redirect, url_for, flash, abort, jsonify,
+    send_from_directory,
+)
 from flask_login import (
     LoginManager, login_user, logout_user, login_required, current_user
 )
 from sqlalchemy import inspect, text
+from werkzeug.utils import secure_filename
 
 from models import (
-    db, User, Escalation, Comment, SavedReportView,
-    ROLES, ESCALATION_TYPES, YES_NO, STATUS_VALUES, OPEN_STATUSES, CLOSED_STATUSES,
+    db, User, Escalation, Comment, SavedReportView, Attachment,
+    ROLES, STANDARD_ROLES, ROLE_FOR_RECRUITER_FIELD, ROLE_FOR_SALES_REP_FIELD, ROLE_FOR_COMPLIANCE_FIELD,
+    ESCALATION_TYPES, CLINICAL_TYPES, SUBTYPES_BY_TYPE, YES_NO, STATUS_VALUES, OPEN_STATUSES, CLOSED_STATUSES,
     BEST_TIME_SLOTS, TIME_ZONES, REPORT_FIELDS,
 )
 from email_utils import (
     send_action_needed_email, send_new_escalation_email,
     send_mention_email, send_new_comment_email,
     send_welcome_email, send_password_reset_email,
+    send_status_changed_email,
 )
 
 app = Flask(__name__)
@@ -28,6 +35,10 @@ app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:/
     "postgres://", "postgresql://", 1
 )
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["UPLOAD_FOLDER"] = os.environ.get("UPLOAD_FOLDER", os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads"))
+app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024  # 20 MB per request
+
+os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 
 db.init_app(app)
 
@@ -55,6 +66,30 @@ def admin_required(fn):
 
 def manager_or_admin(user):
     return user.role in ("Admin", "Manager")
+
+
+def save_uploaded_file(file_storage):
+    """Save an uploaded werkzeug FileStorage to disk, return (original_filename, stored_name) or None."""
+    if not file_storage or not file_storage.filename:
+        return None
+    original_name = secure_filename(file_storage.filename)
+    if not original_name:
+        return None
+    stored_name = f"{uuid.uuid4().hex}_{original_name}"
+    file_storage.save(os.path.join(app.config["UPLOAD_FOLDER"], stored_name))
+    return original_name, stored_name
+
+
+def recruiter_options():
+    return User.query.filter_by(role=ROLE_FOR_RECRUITER_FIELD).order_by(User.first_name).all()
+
+
+def sales_rep_options():
+    return User.query.filter_by(role=ROLE_FOR_SALES_REP_FIELD).order_by(User.first_name).all()
+
+
+def compliance_options():
+    return User.query.filter_by(role=ROLE_FOR_COMPLIANCE_FIELD).order_by(User.first_name).all()
 
 
 # ---------------------------------------------------------------------------
@@ -90,6 +125,8 @@ def forgot_password():
             user.reset_token_expires = datetime.utcnow() + timedelta(hours=2)
             db.session.commit()
             send_password_reset_email(user, base_url(), user.reset_token)
+        # Always show the same message, whether or not the email exists,
+        # so we don't reveal which emails are registered.
         flash("If that email exists in our system, a password reset link has been sent.", "success")
         return redirect(url_for("login"))
     return render_template("forgot_password.html")
@@ -138,15 +175,22 @@ def home():
 @app.route("/escalations/new", methods=["GET", "POST"])
 @login_required
 def new_escalation():
-    users = User.query.order_by(User.first_name).all()
+    recruiters = recruiter_options()
+    sales_reps = sales_rep_options()
+    compliance_specialists = compliance_options()
+    all_users = User.query.order_by(User.first_name).all()
 
     if request.method == "POST":
         f = request.form
 
+        subtype = f.get("subtype") or None
+        if f.get("type") not in CLINICAL_TYPES:
+            subtype = None
+
         esc = Escalation(
             type=f.get("type"),
+            subtype=subtype,
             candidate=f.get("candidate", "").strip(),
-            client=f.get("client", "").strip(),
             facility=f.get("facility", "").strip(),
             assignment_url=f.get("assignment_url", "").strip(),
             discussed_with_manager=f.get("discussed_with_manager"),
@@ -169,25 +213,32 @@ def new_escalation():
         # Required field validation
         required_missing = []
         for label, val in [
-            ("Type", esc.type), ("Candidate", esc.candidate), ("Client", esc.client),
+            ("Type", esc.type), ("Candidate", esc.candidate),
             ("Facility", esc.facility), ("Assignment URL", esc.assignment_url),
-            ("Discussed with Manager", esc.discussed_with_manager),
+            ("Discussed with Coast Manager", esc.discussed_with_manager),
             ("Recruiter", esc.recruiter_id), ("Sales Rep", esc.sales_rep_id),
             ("Compliance Specialist", esc.compliance_specialist_id),
         ]:
             if not val:
                 required_missing.append(label)
+        if esc.type in CLINICAL_TYPES and not esc.subtype:
+            required_missing.append("Subtype")
+
         if required_missing:
             flash(f"Please fill out required field(s): {', '.join(required_missing)}", "error")
-            return render_template("escalation_form.html", users=users, esc=None, form=f,
-                                    types=ESCALATION_TYPES, yes_no=YES_NO, statuses=STATUS_VALUES,
+            return render_template("escalation_form.html", esc=None, form=f,
+                                    recruiters=recruiters, sales_reps=sales_reps, compliance_specialists=compliance_specialists,
+                                    types=ESCALATION_TYPES, clinical_types=CLINICAL_TYPES, subtypes_by_type=SUBTYPES_BY_TYPE,
+                                    yes_no=YES_NO, statuses=STATUS_VALUES,
                                     best_times=BEST_TIME_SLOTS, time_zones=TIME_ZONES, mode="create")
 
         # VR2: Best Day to Call Traveler requires Best Time + Time Zone
         if esc.best_day_to_call and not (esc.best_time_to_call and esc.time_zone):
             flash("Please select Best Time to Call Traveler and the Time Zone field to save the record.", "error")
-            return render_template("escalation_form.html", users=users, esc=None, form=f,
-                                    types=ESCALATION_TYPES, yes_no=YES_NO, statuses=STATUS_VALUES,
+            return render_template("escalation_form.html", esc=None, form=f,
+                                    recruiters=recruiters, sales_reps=sales_reps, compliance_specialists=compliance_specialists,
+                                    types=ESCALATION_TYPES, clinical_types=CLINICAL_TYPES, subtypes_by_type=SUBTYPES_BY_TYPE,
+                                    yes_no=YES_NO, statuses=STATUS_VALUES,
                                     best_times=BEST_TIME_SLOTS, time_zones=TIME_ZONES, mode="create")
 
         # Auto-set Recruiter Manager from the Recruiter's manager on their User record
@@ -196,6 +247,17 @@ def new_escalation():
             esc.recruiter_manager_id = recruiter.manager_id
 
         db.session.add(esc)
+        db.session.commit()
+
+        # Attachments uploaded at creation time
+        for file_storage in request.files.getlist("attachments"):
+            saved = save_uploaded_file(file_storage)
+            if saved:
+                original_name, stored_name = saved
+                db.session.add(Attachment(
+                    escalation_id=esc.id, uploaded_by_id=current_user.id,
+                    filename=original_name, stored_name=stored_name, is_confidential=False,
+                ))
         db.session.commit()
 
         # Email automation #2: notify Recruiter, Sales Rep, Compliance Specialist, Recruiter Manager
@@ -207,8 +269,10 @@ def new_escalation():
         flash(f"Escalation #{esc.id} created.", "success")
         return redirect(url_for("view_escalation", escalation_id=esc.id))
 
-    return render_template("escalation_form.html", users=users, esc=None, form={},
-                            types=ESCALATION_TYPES, yes_no=YES_NO, statuses=STATUS_VALUES,
+    return render_template("escalation_form.html", esc=None, form={},
+                            recruiters=recruiters, sales_reps=sales_reps, compliance_specialists=compliance_specialists,
+                            types=ESCALATION_TYPES, clinical_types=CLINICAL_TYPES, subtypes_by_type=SUBTYPES_BY_TYPE,
+                            yes_no=YES_NO, statuses=STATUS_VALUES,
                             best_times=BEST_TIME_SLOTS, time_zones=TIME_ZONES, mode="create")
 
 
@@ -284,13 +348,16 @@ def parse_mentions(body, users):
 @login_required
 def view_escalation(escalation_id):
     esc = db.session.get(Escalation, escalation_id) or abort(404)
-    users = User.query.order_by(User.first_name).all()
+    recruiters = recruiter_options()
+    sales_reps = sales_rep_options()
+    compliance_specialists = compliance_options()
+    all_users = User.query.order_by(User.first_name).all()
+    can_manage = manager_or_admin(current_user)
 
     if request.method == "POST":
         f = request.form
         old_action_to_id = esc.action_to_id
         old_action_item = esc.action_item
-        old_best_day = esc.best_day_to_call
         old_status = esc.status
 
         new_action_to_id = f.get("action_to_id") or None
@@ -298,7 +365,19 @@ def view_escalation(escalation_id):
         new_best_day = f.get("best_day_to_call") or None
         new_best_time = f.get("best_time_to_call") or None
         new_time_zone = f.get("time_zone") or None
-        new_status = f.get("status")
+
+        # Status field: only Manager/Admin may change it at all. Disabled selects
+        # aren't submitted by browsers, so a missing/unchanged "status" key from a
+        # legitimate page just means "no change". A raw request that tries to sneak
+        # a different value in from a non-manager is explicitly rejected below.
+        submitted_status = f.get("status")
+        if can_manage:
+            new_status = submitted_status or old_status
+        else:
+            new_status = old_status
+            if submitted_status and submitted_status != old_status:
+                flash("You do not have access to update the Status field.", "error")
+                return redirect(url_for("view_escalation", escalation_id=escalation_id))
 
         # VR1: Action To changed but Action Item not changed -> block
         if str(new_action_to_id) != str(old_action_to_id) and new_action_item == old_action_item:
@@ -310,20 +389,23 @@ def view_escalation(escalation_id):
             flash("Please select Best Time to Call Traveler and the Time Zone field to save the record.", "error")
             return redirect(url_for("view_escalation", escalation_id=escalation_id))
 
-        # VR3: Only Manager/Admin can set Status to a closed value
-        if new_status in CLOSED_STATUSES and not manager_or_admin(current_user):
-            flash("You cannot update the Status field to this value", "error")
+        new_type = f.get("type", esc.type)
+        new_subtype = f.get("subtype") or None
+        if new_type not in CLINICAL_TYPES:
+            new_subtype = None
+        elif not new_subtype:
+            flash("Please select a Subtype for this Clinical escalation.", "error")
             return redirect(url_for("view_escalation", escalation_id=escalation_id))
 
         # Apply updates
-        esc.type = f.get("type", esc.type)
+        esc.type = new_type
+        esc.subtype = new_subtype
         esc.candidate = f.get("candidate", esc.candidate)
-        esc.client = f.get("client", esc.client)
         esc.facility = f.get("facility", esc.facility)
         esc.assignment_url = f.get("assignment_url", esc.assignment_url)
         esc.discussed_with_manager = f.get("discussed_with_manager", esc.discussed_with_manager)
         esc.clinical_call_required = f.get("clinical_call_required") or None
-        esc.status = new_status or esc.status
+        esc.status = new_status
         esc.recruiter_id = f.get("recruiter_id") or esc.recruiter_id
         esc.sales_rep_id = f.get("sales_rep_id") or esc.sales_rep_id
         esc.compliance_specialist_id = f.get("compliance_specialist_id") or esc.compliance_specialist_id
@@ -338,24 +420,58 @@ def view_escalation(escalation_id):
         esc.complaint_outcome = f.get("complaint_outcome") or None
         esc.clinical_team_save = bool(f.get("clinical_team_save"))
         esc.facility_resolution = f.get("facility_resolution") or None
-        esc.cancel = bool(f.get("cancel"))
         esc.is_traveler_canceled = f.get("is_traveler_canceled") or None
 
+        # Confidential Information - Manager/Admin only, ignore silently for anyone else
+        if can_manage and "confidential_notes" in f:
+            esc.confidential_notes = f.get("confidential_notes") or None
+
+        db.session.commit()
+
+        # Confidential attachment upload (Manager/Admin only)
+        if can_manage:
+            for file_storage in request.files.getlist("confidential_attachments"):
+                saved = save_uploaded_file(file_storage)
+                if saved:
+                    original_name, stored_name = saved
+                    db.session.add(Attachment(
+                        escalation_id=esc.id, uploaded_by_id=current_user.id,
+                        filename=original_name, stored_name=stored_name, is_confidential=True,
+                    ))
+            db.session.commit()
+
+        # Regular (non-confidential) attachment upload - anyone with access to the record
+        for file_storage in request.files.getlist("attachments"):
+            saved = save_uploaded_file(file_storage)
+            if saved:
+                original_name, stored_name = saved
+                db.session.add(Attachment(
+                    escalation_id=esc.id, uploaded_by_id=current_user.id,
+                    filename=original_name, stored_name=stored_name, is_confidential=False,
+                ))
         db.session.commit()
 
         # Email automation #1: Action To changed -> notify new Action To user
         if str(new_action_to_id) != str(old_action_to_id) and esc.action_to:
             send_action_needed_email(esc.action_to, esc, base_url())
 
+        # Email automation: Status changed -> notify Recruiter, Sales Rep, Compliance Specialist
+        if new_status != old_status:
+            for u in {esc.recruiter, esc.sales_rep, esc.compliance_specialist}:
+                if u:
+                    send_status_changed_email(u, esc, new_status, base_url())
+
         flash("Escalation updated.", "success")
         return redirect(url_for("view_escalation", escalation_id=escalation_id))
 
-    can_edit_closed_status = manager_or_admin(current_user)
     return render_template(
-        "escalation_detail.html", esc=esc, users=users,
-        types=ESCALATION_TYPES, yes_no=YES_NO, statuses=STATUS_VALUES,
+        "escalation_detail.html", esc=esc,
+        recruiters=recruiters, sales_reps=sales_reps, compliance_specialists=compliance_specialists,
+        all_users=all_users,
+        types=ESCALATION_TYPES, clinical_types=CLINICAL_TYPES, subtypes_by_type=SUBTYPES_BY_TYPE,
+        yes_no=YES_NO, statuses=STATUS_VALUES,
         best_times=BEST_TIME_SLOTS, time_zones=TIME_ZONES,
-        closed_statuses=CLOSED_STATUSES, can_edit_closed_status=can_edit_closed_status,
+        can_manage=can_manage,
     )
 
 
@@ -364,10 +480,13 @@ def view_escalation(escalation_id):
 def add_comment(escalation_id):
     esc = db.session.get(Escalation, escalation_id) or abort(404)
     body = request.form.get("body", "").strip()
-    if not body:
+    attachment = save_uploaded_file(request.files.get("attachment"))
+    if not body and not attachment:
         return redirect(url_for("view_escalation", escalation_id=escalation_id))
 
-    comment = Comment(escalation_id=esc.id, user_id=current_user.id, body=body)
+    comment = Comment(escalation_id=esc.id, user_id=current_user.id, body=body or "(attachment)")
+    if attachment:
+        comment.attachment_filename, comment.attachment_stored_name = attachment
     db.session.add(comment)
     db.session.commit()
 
@@ -388,6 +507,26 @@ def add_comment(escalation_id):
             send_new_comment_email(u, esc, current_user, base_url())
 
     return redirect(url_for("view_escalation", escalation_id=escalation_id))
+
+
+@app.route("/attachments/<int:attachment_id>/download")
+@login_required
+def download_attachment(attachment_id):
+    attachment = db.session.get(Attachment, attachment_id) or abort(404)
+    if attachment.is_confidential and not manager_or_admin(current_user):
+        abort(403)
+    return send_from_directory(app.config["UPLOAD_FOLDER"], attachment.stored_name,
+                                as_attachment=True, download_name=attachment.filename)
+
+
+@app.route("/comments/<int:comment_id>/attachment")
+@login_required
+def download_comment_attachment(comment_id):
+    comment = db.session.get(Comment, comment_id) or abort(404)
+    if not comment.attachment_stored_name:
+        abort(404)
+    return send_from_directory(app.config["UPLOAD_FOLDER"], comment.attachment_stored_name,
+                                as_attachment=True, download_name=comment.attachment_filename)
 
 
 # ---------------------------------------------------------------------------
@@ -512,8 +651,6 @@ def load_report_view(view_id):
     view = db.session.get(SavedReportView, view_id) or abort(404)
     fields = json.loads(view.fields_json)
     payload = json.loads(view.filters_json)
-    args = {"fields": fields, "logic": view.logic,
-            "type_filter": payload.get("type_filter", ""), "status_filter": payload.get("status_filter", "")}
     query_parts = [f"fields={f}" for f in fields]
     query_parts.append(f"logic={view.logic}")
     if payload.get("type_filter"):
@@ -547,9 +684,10 @@ def create_user():
         first_name=f.get("first_name", "").strip(),
         last_name=f.get("last_name", "").strip(),
         email=f.get("email", "").strip().lower(),
-        role=f.get("role", "User"),
+        role=f.get("role") or "Recruiter",
         manager_id=f.get("manager_id") or None,
     )
+    # Set an unusable random password until the user sets their own via the welcome email
     user.set_password(secrets.token_urlsafe(16))
     user.reset_token = secrets.token_urlsafe(32)
     user.reset_token_expires = datetime.utcnow() + timedelta(days=7)
@@ -609,25 +747,35 @@ def seed_admin():
 
 def _sync_missing_columns():
     """Best-effort auto-migration: add any model columns that exist in the
-    Python models but are missing from the live database table. This avoids
-    needing a full migration tool for simple additive schema changes."""
+    Python models but are missing from the live database table, and relax
+    NOT NULL constraints on columns the model now marks nullable. Avoids
+    needing a full migration tool for additive/loosening schema changes."""
     inspector = inspect(db.engine)
-    for model in [User, Escalation, Comment, SavedReportView]:
+    for model in [User, Escalation, Comment, SavedReportView, Attachment]:
         table_name = model.__tablename__
         if not inspector.has_table(table_name):
             continue
-        existing_cols = {c["name"] for c in inspector.get_columns(table_name)}
+        existing_cols_info = {c["name"]: c for c in inspector.get_columns(table_name)}
         for col in model.__table__.columns:
-            if col.name in existing_cols:
-                continue
-            try:
-                col_type = col.type.compile(db.engine.dialect)
-                with db.engine.connect() as conn:
-                    conn.execute(text(f'ALTER TABLE "{table_name}" ADD COLUMN "{col.name}" {col_type}'))
-                    conn.commit()
-                print(f"Auto-migration: added missing column {table_name}.{col.name}")
-            except Exception as exc:
-                print(f"Auto-migration: could not add column {table_name}.{col.name}: {exc}")
+            if col.name not in existing_cols_info:
+                try:
+                    col_type = col.type.compile(db.engine.dialect)
+                    with db.engine.connect() as conn:
+                        conn.execute(text(f'ALTER TABLE "{table_name}" ADD COLUMN "{col.name}" {col_type}'))
+                        conn.commit()
+                    print(f"Auto-migration: added missing column {table_name}.{col.name}")
+                except Exception as exc:  # noqa: BLE001
+                    print(f"Auto-migration: could not add column {table_name}.{col.name}: {exc}")
+            else:
+                db_col = existing_cols_info[col.name]
+                if col.nullable and not db_col.get("nullable", True):
+                    try:
+                        with db.engine.connect() as conn:
+                            conn.execute(text(f'ALTER TABLE "{table_name}" ALTER COLUMN "{col.name}" DROP NOT NULL'))
+                            conn.commit()
+                        print(f"Auto-migration: relaxed NOT NULL on {table_name}.{col.name}")
+                    except Exception as exc:  # noqa: BLE001
+                        print(f"Auto-migration: could not relax NOT NULL on {table_name}.{col.name}: {exc}")
 
 
 with app.app_context():

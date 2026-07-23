@@ -2,23 +2,25 @@
 {% block title %}Create an Escalation{% endblock %}
 {% block content %}
 <h1>Create an Escalation</h1>
-<form method="post" class="card">
+<form method="post" class="card" enctype="multipart/form-data">
   <div class="section-header">Information</div>
   <div class="form-grid">
     <div>
       <label>Type *</label>
-      <select name="type" required>
+      <select name="type" id="typeField" required>
         <option value="">-- Select --</option>
         {% for t in types %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+      </select>
+    </div>
+    <div id="subtypeWrapper" style="display:none;">
+      <label>Subtype *</label>
+      <select name="subtype" id="subtypeField">
+        <option value="">-- Select --</option>
       </select>
     </div>
     <div>
       <label>Candidate *</label>
       <input type="text" name="candidate" required>
-    </div>
-    <div>
-      <label>Client *</label>
-      <input type="text" name="client" required>
     </div>
     <div>
       <label>Facility *</label>
@@ -29,7 +31,7 @@
       <input type="url" name="assignment_url" required>
     </div>
     <div>
-      <label>Discussed with Manager *</label>
+      <label>Discussed with Coast Manager? *</label>
       <select name="discussed_with_manager" required>
         <option value="">-- Select --</option>
         {% for v in yes_no %}<option value="{{ v }}">{{ v }}</option>{% endfor %}
@@ -42,25 +44,29 @@
         {% for v in yes_no %}<option value="{{ v }}">{{ v }}</option>{% endfor %}
       </select>
     </div>
+  </div>
+
+  <div class="section-header">Related Users</div>
+  <div class="form-grid">
     <div>
       <label>Recruiter *</label>
       <select name="recruiter_id" required>
         <option value="">-- Select --</option>
-        {% for u in users %}<option value="{{ u.id }}">{{ u.full_name }}</option>{% endfor %}
+        {% for u in recruiters %}<option value="{{ u.id }}">{{ u.full_name }}</option>{% endfor %}
       </select>
     </div>
     <div>
       <label>Sales Rep *</label>
       <select name="sales_rep_id" required>
         <option value="">-- Select --</option>
-        {% for u in users %}<option value="{{ u.id }}">{{ u.full_name }}</option>{% endfor %}
+        {% for u in sales_reps %}<option value="{{ u.id }}">{{ u.full_name }}</option>{% endfor %}
       </select>
     </div>
     <div>
       <label>Compliance Specialist *</label>
       <select name="compliance_specialist_id" required>
         <option value="">-- Select --</option>
-        {% for u in users %}<option value="{{ u.id }}">{{ u.full_name }}</option>{% endfor %}
+        {% for u in compliance_specialists %}<option value="{{ u.id }}">{{ u.full_name }}</option>{% endfor %}
       </select>
     </div>
     <div>
@@ -79,7 +85,7 @@
       <label>Action To</label>
       <select name="action_to_id">
         <option value="">-- Select --</option>
-        {% for u in users %}<option value="{{ u.id }}">{{ u.full_name }}</option>{% endfor %}
+        {% for u in (recruiters + sales_reps + compliance_specialists) %}<option value="{{ u.id }}">{{ u.full_name }}</option>{% endfor %}
       </select>
     </div>
     <div>
@@ -114,10 +120,38 @@
         {% for v in time_zones %}<option value="{{ v }}">{{ v }}</option>{% endfor %}
       </select>
     </div>
+    <div class="full">
+      <label>Attach Documents</label>
+      <input type="file" name="attachments" multiple>
+    </div>
   </div>
 
   <p style="margin-top:20px;">
     <button class="btn" type="submit">Create Escalation</button>
   </p>
 </form>
+
+<script>
+const SUBTYPES_BY_TYPE = {{ subtypes_by_type|tojson }};
+const CLINICAL_TYPES = {{ clinical_types|tojson }};
+const typeField = document.getElementById('typeField');
+const subtypeWrapper = document.getElementById('subtypeWrapper');
+const subtypeField = document.getElementById('subtypeField');
+
+function syncSubtype() {
+  const type = typeField.value;
+  if (CLINICAL_TYPES.includes(type)) {
+    subtypeWrapper.style.display = '';
+    subtypeField.required = true;
+    const options = SUBTYPES_BY_TYPE[type] || [];
+    subtypeField.innerHTML = '<option value="">-- Select --</option>' + options.map(o => `<option value="${o}">${o}</option>`).join('');
+  } else {
+    subtypeWrapper.style.display = 'none';
+    subtypeField.required = false;
+    subtypeField.innerHTML = '<option value=""></option>';
+  }
+}
+typeField.addEventListener('change', syncSubtype);
+syncSubtype();
+</script>
 {% endblock %}

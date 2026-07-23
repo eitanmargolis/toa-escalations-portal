@@ -106,6 +106,8 @@ def send_new_comment_email(recipient_user, escalation, comment_author, base_url)
     <p><a href="{link}">Click HERE to view this Escalation Record</a></p>
     """
     send_email(recipient_user.email, subject, body)
+
+
 def send_welcome_email(user, base_url, token):
     link = f"{base_url}/reset-password/{token}"
     subject = "Welcome to the Coast Medical Service TOA Escalations Portal"
@@ -128,3 +130,18 @@ def send_password_reset_email(user, base_url, token):
     <p>This link expires in 2 hours. If you didn't request this, you can safely ignore this email.</p>
     """
     send_email(user.email, subject, body)
+
+
+def send_status_changed_email(recipient_user, escalation, new_status, base_url):
+    link = f"{base_url}/escalations/{escalation.id}"
+    subject = f"Status Updated for {escalation.candidate}'s Escalation"
+    body = f"""
+    <p>Hi {recipient_user.first_name},</p>
+    <p>The status of this Escalation Record has been updated.</p>
+    <p><b>Type:</b> {escalation.type}<br/>
+    <b>Candidate:</b> {escalation.candidate}<br/>
+    <b>Placement URL:</b> {escalation.assignment_url}<br/>
+    <b>New Status:</b> {new_status}</p>
+    <p><a href="{link}" style="display:inline-block;padding:10px 18px;background:#002c54;color:#ffffff;text-decoration:none;border-radius:6px;">View Escalation Record</a></p>
+    """
+    send_email(recipient_user.email, subject, body)
