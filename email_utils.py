@@ -92,7 +92,7 @@ def send_mention_email(mentioned_user, escalation, comment_author, base_url):
     body = f"""
     <p>Hi {mentioned_user.first_name},</p>
     <p>{comment_author.full_name} mentioned you on Escalation #{escalation.id} ({escalation.candidate} - {escalation.facility}).</p>
-    <p><a href="{link}">Click HERE to view this Escalation Record</a></p>
+    <p><a href="{link}" style="display:inline-block;padding:10px 18px;background:#002c54;color:#ffffff;text-decoration:none;border-radius:6px;">View Escalation Record</a></p>
     """
     send_email(mentioned_user.email, subject, body)
 

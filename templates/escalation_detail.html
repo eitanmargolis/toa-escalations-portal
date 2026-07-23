@@ -175,10 +175,10 @@
         {% endfor %}
       </div>
       <form method="post" action="{{ url_for('add_comment', escalation_id=esc.id) }}" enctype="multipart/form-data">
-        <textarea name="body" id="commentBody" placeholder="Add a comment... use @ to tag a teammate" list="userNames"></textarea>
-        <datalist id="userNames">
-          {% for u in all_users %}<option value="@{{ u.full_name }}">{% endfor %}
-        </datalist>
+        <div style="position:relative;">
+          <textarea name="body" id="commentBody" placeholder="Add a comment... type @ to tag a teammate"></textarea>
+          <div id="mentionDropdown" class="mention-dropdown"></div>
+        </div>
         <p><label style="font-weight:400;font-size:13px;">Attach a file (optional)</label><input type="file" name="attachment"></p>
         <p><button class="btn" type="submit">Post Comment</button></p>
       </form>
@@ -219,5 +219,60 @@ document.querySelectorAll('.comment-time').forEach(el => {
   if (isNaN(d.getTime())) return;
   el.textContent = d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 });
+
+// @mention autocomplete for the Discussion comment box (textarea doesn't support <datalist>,
+// so we build a real dropdown that filters as you type after "@" and inserts the exact full name).
+const ALL_USER_NAMES = {{ all_users|map(attribute='full_name')|list|tojson }};
+const commentBody = document.getElementById('commentBody');
+const mentionDropdown = document.getElementById('mentionDropdown');
+
+function currentMentionQuery() {
+  const pos = commentBody.selectionStart;
+  const textBeforeCursor = commentBody.value.slice(0, pos);
+  const match = textBeforeCursor.match(/@([A-Za-z ]*)$/);
+  return match ? match[1] : null;
+}
+
+function renderMentionDropdown(query) {
+  const q = query.toLowerCase();
+  const matches = ALL_USER_NAMES.filter(n => n.toLowerCase().includes(q));
+  if (!matches.length) {
+    mentionDropdown.style.display = 'none';
+    return;
+  }
+  mentionDropdown.innerHTML = matches.slice(0, 8).map(n =>
+    `<div class="mention-option" data-name="${n}">${n}</div>`
+  ).join('');
+  mentionDropdown.style.display = 'block';
+}
+
+if (commentBody) {
+  commentBody.addEventListener('input', () => {
+    const query = currentMentionQuery();
+    if (query !== null) {
+      renderMentionDropdown(query);
+    } else {
+      mentionDropdown.style.display = 'none';
+    }
+  });
+
+  mentionDropdown.addEventListener('mousedown', (e) => {
+    const opt = e.target.closest('.mention-option');
+    if (!opt) return;
+    e.preventDefault();
+    const name = opt.getAttribute('data-name');
+    const pos = commentBody.selectionStart;
+    const text = commentBody.value;
+    const before = text.slice(0, pos).replace(/@([A-Za-z ]*)$/, '@' + name + ' ');
+    const after = text.slice(pos);
+    commentBody.value = before + after;
+    mentionDropdown.style.display = 'none';
+    commentBody.focus();
+  });
+
+  document.addEventListener('click', (e) => {
+    if (e.target !== commentBody) mentionDropdown.style.display = 'none';
+  });
+}
 </script>
 {% endblock %}

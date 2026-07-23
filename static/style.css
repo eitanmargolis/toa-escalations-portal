@@ -96,6 +96,22 @@ input[type=text], input[type=url], input[type=date], input[type=email], input[ty
 }
 textarea { min-height: 80px; }
 
+.mention-dropdown {
+  display: none;
+  position: absolute;
+  z-index: 20;
+  top: 100%;
+  left: 0;
+  width: 100%;
+  background: #fff;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+}
+.mention-option { padding: 8px 12px; cursor: pointer; font-size: 14px; }
+.mention-option:hover { background: var(--brand-bg); }
 .btn {
   display: inline-block; background: var(--brand-primary); color: #fff; border: none;
   padding: 9px 18px; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; text-decoration: none;
