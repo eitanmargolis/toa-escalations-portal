@@ -6,10 +6,10 @@
   <div class="section-header">Information</div>
   <div class="form-grid">
     <div>
-      <label>Compliance Specialist<span id="complianceRequiredMark"> *</span></label>
-      <select name="compliance_specialist_id" id="complianceField">
+      <label>Type *</label>
+      <select name="type" id="typeField" required>
         <option value="">-- Select --</option>
-        {% for u in compliance_specialists %}<option value="{{ u.id }}">{{ u.full_name }}</option>{% endfor %}
+        {% for t in types %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
       </select>
     </div>
     <div id="subtypeWrapper" style="display:none;">
@@ -63,8 +63,8 @@
       </select>
     </div>
     <div>
-      <label>Compliance Specialist *</label>
-      <select name="compliance_specialist_id" required>
+      <label>Compliance Specialist<span id="complianceRequiredMark"> *</span></label>
+      <select name="compliance_specialist_id" id="complianceField">
         <option value="">-- Select --</option>
         {% for u in compliance_specialists %}<option value="{{ u.id }}">{{ u.full_name }}</option>{% endfor %}
       </select>
@@ -85,7 +85,7 @@
       <label>Action To</label>
       <select name="action_to_id">
         <option value="">-- Select --</option>
-        {% for u in (recruiters + sales_reps + compliance_specialists) %}<option value="{{ u.id }}">{{ u.full_name }}</option>{% endfor %}
+        {% for u in all_users %}<option value="{{ u.id }}">{{ u.full_name }}{{ ' (Me)' if u.id==current_user.id }}</option>{% endfor %}
       </select>
     </div>
     <div>
@@ -161,4 +161,5 @@ function syncSubtype() {
 }
 typeField.addEventListener('change', syncSubtype);
 syncSubtype();
-</script>{% endblock %}
+</script>
+{% endblock %}
