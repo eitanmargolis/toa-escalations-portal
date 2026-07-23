@@ -15,6 +15,9 @@ from flask_login import (
 )
 from sqlalchemy import inspect, text
 from werkzeug.utils import secure_filename
+import cloudinary
+import cloudinary.uploader
+import cloudinary.utils
 
 from models import (
     db, User, Escalation, Comment, SavedReportView, Attachment,
@@ -39,6 +42,19 @@ app.config["UPLOAD_FOLDER"] = os.environ.get("UPLOAD_FOLDER", os.path.join(os.pa
 app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024  # 20 MB per request
 
 os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
+
+CLOUDINARY_CONFIGURED = bool(
+    os.environ.get("CLOUDINARY_CLOUD_NAME")
+    and os.environ.get("CLOUDINARY_API_KEY")
+    and os.environ.get("CLOUDINARY_API_SECRET")
+)
+if CLOUDINARY_CONFIGURED:
+    cloudinary.config(
+        cloud_name=os.environ.get("CLOUDINARY_CLOUD_NAME"),
+        api_key=os.environ.get("CLOUDINARY_API_KEY"),
+        api_secret=os.environ.get("CLOUDINARY_API_SECRET"),
+        secure=True,
+    )
 
 db.init_app(app)
 
@@ -68,16 +84,51 @@ def manager_or_admin(user):
     return user.role in ("Admin", "Manager")
 
 
-def save_uploaded_file(file_storage):
-    """Save an uploaded werkzeug FileStorage to disk, return (original_filename, stored_name) or None."""
+def save_uploaded_file(file_storage, confidential=False):
+    """Save an uploaded werkzeug FileStorage.
+
+    Returns (original_filename, stored_value, storage_type) or None.
+    - If Cloudinary is configured: uploads there so files survive redeploys.
+      Confidential files use Cloudinary's "authenticated" delivery type, which
+      requires a cryptographically signed URL to access - a bare/guessed link
+      will NOT work, so this preserves the confidential-access restriction.
+    - If Cloudinary is not configured: falls back to local disk (ephemeral -
+      lost on every redeploy/restart, but keeps the app usable without setup).
+    """
     if not file_storage or not file_storage.filename:
         return None
     original_name = secure_filename(file_storage.filename)
     if not original_name:
         return None
+
+    if CLOUDINARY_CONFIGURED:
+        public_id = f"toa-escalations/{uuid.uuid4().hex}"
+        upload_type = "authenticated" if confidential else "upload"
+        cloudinary.uploader.upload(
+            file_storage, resource_type="raw", public_id=public_id,
+            type=upload_type, use_filename=False, unique_filename=False,
+        )
+        if confidential:
+            return original_name, public_id, "cloudinary_authenticated"
+        url, _ = cloudinary.utils.cloudinary_url(public_id, resource_type="raw", type="upload", secure=True)
+        return original_name, url, "cloudinary_public"
+
     stored_name = f"{uuid.uuid4().hex}_{original_name}"
     file_storage.save(os.path.join(app.config["UPLOAD_FOLDER"], stored_name))
-    return original_name, stored_name
+    return original_name, stored_name, "local"
+
+
+def serve_stored_file(stored_value, storage_type, filename):
+    """Redirect/serve a previously-uploaded file regardless of where it lives."""
+    if storage_type == "cloudinary_public":
+        return redirect(stored_value)
+    if storage_type == "cloudinary_authenticated":
+        url, _ = cloudinary.utils.cloudinary_url(
+            stored_value, resource_type="raw", type="authenticated", sign_url=True, secure=True
+        )
+        return redirect(url)
+    return send_from_directory(app.config["UPLOAD_FOLDER"], stored_value,
+                                as_attachment=True, download_name=filename)
 
 
 def recruiter_options():
@@ -251,12 +302,12 @@ def new_escalation():
 
         # Attachments uploaded at creation time
         for file_storage in request.files.getlist("attachments"):
-            saved = save_uploaded_file(file_storage)
+            saved = save_uploaded_file(file_storage, confidential=False)
             if saved:
-                original_name, stored_name = saved
+                original_name, stored_value, storage_type = saved
                 db.session.add(Attachment(
                     escalation_id=esc.id, uploaded_by_id=current_user.id,
-                    filename=original_name, stored_name=stored_name, is_confidential=False,
+                    filename=original_name, stored_name=stored_value, storage_type=storage_type, is_confidential=False,
                 ))
         db.session.commit()
 
@@ -431,23 +482,23 @@ def view_escalation(escalation_id):
         # Confidential attachment upload (Manager/Admin only)
         if can_manage:
             for file_storage in request.files.getlist("confidential_attachments"):
-                saved = save_uploaded_file(file_storage)
+                saved = save_uploaded_file(file_storage, confidential=True)
                 if saved:
-                    original_name, stored_name = saved
+                    original_name, stored_value, storage_type = saved
                     db.session.add(Attachment(
                         escalation_id=esc.id, uploaded_by_id=current_user.id,
-                        filename=original_name, stored_name=stored_name, is_confidential=True,
+                        filename=original_name, stored_name=stored_value, storage_type=storage_type, is_confidential=True,
                     ))
             db.session.commit()
 
         # Regular (non-confidential) attachment upload - anyone with access to the record
         for file_storage in request.files.getlist("attachments"):
-            saved = save_uploaded_file(file_storage)
+            saved = save_uploaded_file(file_storage, confidential=False)
             if saved:
-                original_name, stored_name = saved
+                original_name, stored_value, storage_type = saved
                 db.session.add(Attachment(
                     escalation_id=esc.id, uploaded_by_id=current_user.id,
-                    filename=original_name, stored_name=stored_name, is_confidential=False,
+                    filename=original_name, stored_name=stored_value, storage_type=storage_type, is_confidential=False,
                 ))
         db.session.commit()
 
@@ -480,13 +531,13 @@ def view_escalation(escalation_id):
 def add_comment(escalation_id):
     esc = db.session.get(Escalation, escalation_id) or abort(404)
     body = request.form.get("body", "").strip()
-    attachment = save_uploaded_file(request.files.get("attachment"))
+    attachment = save_uploaded_file(request.files.get("attachment"), confidential=False)
     if not body and not attachment:
         return redirect(url_for("view_escalation", escalation_id=escalation_id))
 
     comment = Comment(escalation_id=esc.id, user_id=current_user.id, body=body or "(attachment)")
     if attachment:
-        comment.attachment_filename, comment.attachment_stored_name = attachment
+        comment.attachment_filename, comment.attachment_stored_name, comment.attachment_storage_type = attachment
     db.session.add(comment)
     db.session.commit()
 
@@ -515,8 +566,7 @@ def download_attachment(attachment_id):
     attachment = db.session.get(Attachment, attachment_id) or abort(404)
     if attachment.is_confidential and not manager_or_admin(current_user):
         abort(403)
-    return send_from_directory(app.config["UPLOAD_FOLDER"], attachment.stored_name,
-                                as_attachment=True, download_name=attachment.filename)
+    return serve_stored_file(attachment.stored_name, attachment.storage_type or "local", attachment.filename)
 
 
 @app.route("/comments/<int:comment_id>/attachment")
@@ -525,8 +575,7 @@ def download_comment_attachment(comment_id):
     comment = db.session.get(Comment, comment_id) or abort(404)
     if not comment.attachment_stored_name:
         abort(404)
-    return send_from_directory(app.config["UPLOAD_FOLDER"], comment.attachment_stored_name,
-                                as_attachment=True, download_name=comment.attachment_filename)
+    return serve_stored_file(comment.attachment_stored_name, comment.attachment_storage_type or "local", comment.attachment_filename)
 
 
 # ---------------------------------------------------------------------------

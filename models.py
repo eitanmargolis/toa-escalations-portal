@@ -216,6 +216,7 @@ class Comment(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     attachment_filename = db.Column(db.String(255), nullable=True)
     attachment_stored_name = db.Column(db.String(255), nullable=True)
+    attachment_storage_type = db.Column(db.String(30), nullable=True, default="local")
 
 
 class Attachment(db.Model):
@@ -226,6 +227,7 @@ class Attachment(db.Model):
     uploaded_by = db.relationship("User")
     filename = db.Column(db.String(255), nullable=False)
     stored_name = db.Column(db.String(255), nullable=False)
+    storage_type = db.Column(db.String(30), nullable=True, default="local")
     is_confidential = db.Column(db.Boolean, default=False)
     uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
 
