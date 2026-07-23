@@ -261,17 +261,19 @@ def new_escalation():
             created_by_id=current_user.id,
         )
 
-        # Required field validation
+      # Required field validation
         required_missing = []
         for label, val in [
             ("Type", esc.type), ("Candidate", esc.candidate),
             ("Facility", esc.facility), ("Assignment URL", esc.assignment_url),
             ("Discussed with Coast Manager", esc.discussed_with_manager),
             ("Recruiter", esc.recruiter_id), ("Sales Rep", esc.sales_rep_id),
-            ("Compliance Specialist", esc.compliance_specialist_id),
         ]:
             if not val:
                 required_missing.append(label)
+        # Compliance Specialist is not required for Clinical - Traveler/Client Initiated
+        if esc.type not in CLINICAL_TYPES and not esc.compliance_specialist_id:
+            required_missing.append("Compliance Specialist")
         if esc.type in CLINICAL_TYPES and not esc.subtype:
             required_missing.append("Subtype")
 

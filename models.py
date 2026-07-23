@@ -172,7 +172,7 @@ class Escalation(db.Model):
     sales_rep_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     sales_rep = db.relationship("User", foreign_keys=[sales_rep_id])
 
-    compliance_specialist_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    compliance_specialist_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)  # not required for   	Clinical types
     compliance_specialist = db.relationship("User", foreign_keys=[compliance_specialist_id])
 
     recruiter_manager_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)

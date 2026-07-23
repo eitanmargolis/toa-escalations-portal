@@ -6,10 +6,10 @@
   <div class="section-header">Information</div>
   <div class="form-grid">
     <div>
-      <label>Type *</label>
-      <select name="type" id="typeField" required>
+      <label>Compliance Specialist<span id="complianceRequiredMark"> *</span></label>
+      <select name="compliance_specialist_id" id="complianceField">
         <option value="">-- Select --</option>
-        {% for t in types %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+        {% for u in compliance_specialists %}<option value="{{ u.id }}">{{ u.full_name }}</option>{% endfor %}
       </select>
     </div>
     <div id="subtypeWrapper" style="display:none;">
@@ -137,10 +137,14 @@ const CLINICAL_TYPES = {{ clinical_types|tojson }};
 const typeField = document.getElementById('typeField');
 const subtypeWrapper = document.getElementById('subtypeWrapper');
 const subtypeField = document.getElementById('subtypeField');
+const complianceField = document.getElementById('complianceField');
+const complianceRequiredMark = document.getElementById('complianceRequiredMark');
 
 function syncSubtype() {
   const type = typeField.value;
-  if (CLINICAL_TYPES.includes(type)) {
+  const isClinical = CLINICAL_TYPES.includes(type);
+
+  if (isClinical) {
     subtypeWrapper.style.display = '';
     subtypeField.required = true;
     const options = SUBTYPES_BY_TYPE[type] || [];
@@ -150,8 +154,11 @@ function syncSubtype() {
     subtypeField.required = false;
     subtypeField.innerHTML = '<option value=""></option>';
   }
+
+  // Compliance Specialist is not required for Clinical - Traveler/Client Initiated
+  complianceField.required = !isClinical;
+  complianceRequiredMark.style.display = isClinical ? 'none' : '';
 }
 typeField.addEventListener('change', syncSubtype);
 syncSubtype();
-</script>
-{% endblock %}
+</script>{% endblock %}
