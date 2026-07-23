@@ -2,16 +2,7 @@
 {% import "_status_badge.html" as b %}
 {% block title %}Escalation #{{ esc.id }}{% endblock %}
 {% block content %}
-<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:20px; margin-bottom:8px;">
-  <h1 style="margin:0;">Escalation #{{ esc.id }} &mdash; {{ esc.candidate }}</h1>
-  <div style="min-width:260px;">
-    <label>Status</label>
-    <select name="status" id="statusSelect" {{ 'disabled' if not can_manage }} form="mainEscalationForm">
-      {% for s in statuses %}<option value="{{ s }}" {{ 'selected' if esc.status==s }}>{{ s }}</option>{% endfor %}
-    </select>
-    {% if not can_manage %}<p style="font-size:12px;color:var(--brand-gray);margin:4px 0 0;">Only Managers/Admins can change Status.</p>{% endif %}
-  </div>
-</div>
+<h1 style="margin:0 0 12px;">Escalation #{{ esc.id }} &mdash; {{ esc.candidate }}</h1>
 
 <div style="display:flex; gap:20px; align-items:flex-start;">
   <div style="flex:2; min-width:0;">
@@ -23,17 +14,24 @@
           <select name="type" id="typeField">
             {% for t in types %}<option value="{{ t }}" {{ 'selected' if esc.type==t }}>{{ t }}</option>{% endfor %}
           </select>
+          <div id="subtypeWrapper" style="margin-top:10px; {{ '' if esc.type in clinical_types else 'display:none;' }}">
+            <label>Subtype</label>
+            <select name="subtype" id="subtypeField">
+              <option value="">-- Select --</option>
+              {% if esc.type in clinical_types %}
+                {% for s in subtypes_by_type.get(esc.type, []) %}
+                  <option value="{{ s }}" {{ 'selected' if esc.subtype==s }}>{{ s }}</option>
+                {% endfor %}
+              {% endif %}
+            </select>
+          </div>
         </div>
-        <div id="subtypeWrapper" style="{{ '' if esc.type in clinical_types else 'display:none;' }}">
-          <label>Subtype</label>
-          <select name="subtype" id="subtypeField">
-            <option value="">-- Select --</option>
-            {% if esc.type in clinical_types %}
-              {% for s in subtypes_by_type.get(esc.type, []) %}
-                <option value="{{ s }}" {{ 'selected' if esc.subtype==s }}>{{ s }}</option>
-              {% endfor %}
-            {% endif %}
+        <div>
+          <label>Status</label>
+          <select name="status" id="statusSelect" {{ 'disabled' if not can_manage }}>
+            {% for s in statuses %}<option value="{{ s }}" {{ 'selected' if esc.status==s }}>{{ s }}</option>{% endfor %}
           </select>
+          {% if not can_manage %}<p style="font-size:12px;color:var(--brand-gray);margin:4px 0 0;">Only Managers/Admins can change Status.</p>{% endif %}
         </div>
         <div><label>Candidate</label><input type="text" name="candidate" value="{{ esc.candidate }}"></div>
         <div><label>Facility</label><input type="text" name="facility" value="{{ esc.facility }}"></div>
@@ -182,7 +180,7 @@
           {% for u in all_users %}<option value="@{{ u.full_name }}">{% endfor %}
         </datalist>
         <p><label style="font-weight:400;font-size:13px;">Attach a file (optional)</label><input type="file" name="attachment"></p>
-        <p><button class="btn btn-accent" type="submit">Post Comment</button></p>
+        <p><button class="btn" type="submit">Post Comment</button></p>
       </form>
     </div>
   </div>
