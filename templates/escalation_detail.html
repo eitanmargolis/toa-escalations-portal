@@ -75,11 +75,29 @@
           <label>Recruiter Manager</label>
           <input type="text" disabled value="{{ esc.recruiter_manager.full_name if esc.recruiter_manager else '-' }}">
         </div>
+        <div id="payrollSpecialistWrapper" style="{{ '' if esc.type == 'Payroll & Timekeeping' else 'display:none;' }}">
+          <label>Payroll Specialist</label>
+          <select name="payroll_specialist_id" id="payrollSpecialistField">
+            <option value="">-- Auto-assigned to Payroll Team --</option>
+            {% for u in payroll_specialists %}<option value="{{ u.id }}" {{ 'selected' if esc.payroll_specialist_id==u.id }}>{{ u.full_name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div id="clinicalLiaisonWrapper" style="{{ '' if esc.type in clinical_types else 'display:none;' }}">
+          <label>Clinical Liaison</label>
+          <select name="clinical_liaison_id" id="clinicalLiaisonField">
+            <option value="">-- Auto-assigned to Lauren Redig --</option>
+            {% for u in clinical_liaisons %}<option value="{{ u.id }}" {{ 'selected' if esc.clinical_liaison_id==u.id }}>{{ u.full_name }}</option>{% endfor %}
+          </select>
+        </div>
       </div>
 
       <div class="section-header">Escalation Detail</div>
       <div class="form-grid">
-        <div class="full"><label>Details/What Happened?</label><textarea name="details">{{ esc.details or '' }}</textarea></div>
+        <div class="full">
+          <label>Details/What Happened?</label>
+          <div class="richtext-editor" id="detailsEditor" contenteditable="true" data-placeholder="Describe what happened...">{{ esc.details|safe if esc.details }}</div>
+          <textarea name="details" id="detailsHidden" class="richtext-sync-field">{{ esc.details or '' }}</textarea>
+        </div>
         <div>
           <label>Action To</label>
           <select name="action_to_id">
@@ -165,7 +183,7 @@
         {% for c in esc.comments %}
           <div class="comment">
             <div class="meta"><span class="comment-author">{{ c.user.full_name }}</span> &middot; <span class="comment-time" data-utc="{{ c.created_at.isoformat() }}Z">{{ c.created_at.strftime('%b %d, %Y %I:%M %p') }} UTC</span></div>
-            <div>{{ c.body }}</div>
+            <div>{{ c.body|safe }}</div>
             {% if c.attachment_filename %}
               <div style="margin-top:4px;"><a href="{{ url_for('download_comment_attachment', comment_id=c.id) }}">📎 {{ c.attachment_filename }}</a></div>
             {% endif %}
@@ -176,7 +194,8 @@
       </div>
       <form method="post" action="{{ url_for('add_comment', escalation_id=esc.id) }}" enctype="multipart/form-data">
         <div style="position:relative;">
-          <textarea name="body" id="commentBody" placeholder="Add a comment... type @ to tag a teammate"></textarea>
+          <div class="richtext-editor" id="commentEditor" contenteditable="true" data-placeholder="Add a comment... type @ to tag a teammate"></div>
+          <textarea name="body" id="commentBody" class="richtext-sync-field"></textarea>
           <div id="mentionDropdown" class="mention-dropdown"></div>
         </div>
         <p><label style="font-weight:400;font-size:13px;">Attach a file (optional)</label><input type="file" name="attachment"></p>
@@ -193,10 +212,15 @@ const CURRENT_SUBTYPE = {{ (esc.subtype or "")|tojson }};
 const typeField = document.getElementById('typeField');
 const subtypeWrapper = document.getElementById('subtypeWrapper');
 const subtypeField = document.getElementById('subtypeField');
+const payrollSpecialistWrapper = document.getElementById('payrollSpecialistWrapper');
+const clinicalLiaisonWrapper = document.getElementById('clinicalLiaisonWrapper');
 
 function syncSubtype(preserveCurrent) {
   const type = typeField.value;
-  if (CLINICAL_TYPES.includes(type)) {
+  const isClinical = CLINICAL_TYPES.includes(type);
+  const isPayroll = type === 'Payroll & Timekeeping';
+
+  if (isClinical) {
     subtypeWrapper.style.display = '';
     const options = SUBTYPES_BY_TYPE[type] || [];
     subtypeField.innerHTML = '<option value="">-- Select --</option>' + options.map(o => {
@@ -207,6 +231,9 @@ function syncSubtype(preserveCurrent) {
     subtypeWrapper.style.display = 'none';
     subtypeField.innerHTML = '';
   }
+
+  if (payrollSpecialistWrapper) payrollSpecialistWrapper.style.display = isPayroll ? '' : 'none';
+  if (clinicalLiaisonWrapper) clinicalLiaisonWrapper.style.display = isClinical ? '' : 'none';
 }
 typeField.addEventListener('change', () => syncSubtype(false));
 syncSubtype(true);
@@ -220,16 +247,42 @@ document.querySelectorAll('.comment-time').forEach(el => {
   el.textContent = d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 });
 
-// @mention autocomplete for the Discussion comment box (textarea doesn't support <datalist>,
-// so we build a real dropdown that filters as you type after "@" and inserts the exact full name).
+// --- Rich text editor (contenteditable) sync for Details/What Happened ---
+const detailsEditor = document.getElementById('detailsEditor');
+const detailsHidden = document.getElementById('detailsHidden');
+const mainEscalationForm = document.getElementById('mainEscalationForm');
+function syncDetailsHidden() {
+  detailsHidden.value = detailsEditor.innerHTML.trim();
+}
+detailsEditor.addEventListener('input', syncDetailsHidden);
+detailsEditor.addEventListener('blur', syncDetailsHidden);
+mainEscalationForm.addEventListener('submit', syncDetailsHidden);
+
+// @mention autocomplete for the Discussion comment box. The visible editor is now a
+// contenteditable div (to support rich text / pasted formatting); we track the caret
+// position within it using the Selection API instead of textarea selectionStart.
 const ALL_USER_NAMES = {{ all_users|map(attribute='full_name')|list|tojson }};
+const commentEditor = document.getElementById('commentEditor');
 const commentBody = document.getElementById('commentBody');
+const commentForm = commentEditor ? commentEditor.closest('form') : null;
 const mentionDropdown = document.getElementById('mentionDropdown');
 
+function syncCommentHidden() {
+  if (commentBody && commentEditor) commentBody.value = commentEditor.innerHTML.trim();
+}
+
+function getCaretTextNode() {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return null;
+  return sel.getRangeAt(0);
+}
+
 function currentMentionQuery() {
-  const pos = commentBody.selectionStart;
-  const textBeforeCursor = commentBody.value.slice(0, pos);
-  const match = textBeforeCursor.match(/@([A-Za-z ]*)$/);
+  const range = getCaretTextNode();
+  if (!range || !commentEditor.contains(range.startContainer)) return null;
+  const node = range.startContainer;
+  const text = node.nodeType === Node.TEXT_NODE ? node.textContent.slice(0, range.startOffset) : '';
+  const match = text.match(/@([A-Za-z ]*)$/);
   return match ? match[1] : null;
 }
 
@@ -246,8 +299,28 @@ function renderMentionDropdown(query) {
   mentionDropdown.style.display = 'block';
 }
 
-if (commentBody) {
-  commentBody.addEventListener('input', () => {
+function insertMentionName(name) {
+  const range = getCaretTextNode();
+  if (!range) return;
+  const node = range.startContainer;
+  if (node.nodeType === Node.TEXT_NODE) {
+    const text = node.textContent;
+    const before = text.slice(0, range.startOffset).replace(/@([A-Za-z ]*)$/, '@' + name + ' ');
+    const after = text.slice(range.startOffset);
+    node.textContent = before + after;
+    const newPos = before.length;
+    const newRange = document.createRange();
+    newRange.setStart(node, Math.min(newPos, node.textContent.length));
+    newRange.collapse(true);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(newRange);
+  }
+}
+
+if (commentEditor) {
+  commentEditor.addEventListener('input', () => {
+    syncCommentHidden();
     const query = currentMentionQuery();
     if (query !== null) {
       renderMentionDropdown(query);
@@ -255,23 +328,22 @@ if (commentBody) {
       mentionDropdown.style.display = 'none';
     }
   });
+  commentEditor.addEventListener('blur', syncCommentHidden);
+  if (commentForm) commentForm.addEventListener('submit', syncCommentHidden);
 
   mentionDropdown.addEventListener('mousedown', (e) => {
     const opt = e.target.closest('.mention-option');
     if (!opt) return;
     e.preventDefault();
     const name = opt.getAttribute('data-name');
-    const pos = commentBody.selectionStart;
-    const text = commentBody.value;
-    const before = text.slice(0, pos).replace(/@([A-Za-z ]*)$/, '@' + name + ' ');
-    const after = text.slice(pos);
-    commentBody.value = before + after;
+    insertMentionName(name);
+    syncCommentHidden();
     mentionDropdown.style.display = 'none';
-    commentBody.focus();
+    commentEditor.focus();
   });
 
   document.addEventListener('click', (e) => {
-    if (e.target !== commentBody) mentionDropdown.style.display = 'none';
+    if (e.target !== commentEditor) mentionDropdown.style.display = 'none';
   });
 }
 </script>

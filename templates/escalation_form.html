@@ -73,13 +73,28 @@
       <label>Recruiter Manager</label>
       <input type="text" disabled placeholder="Auto-set from Recruiter's manager on save">
     </div>
+    <div id="payrollSpecialistWrapper" style="display:none;">
+      <label>Payroll Specialist</label>
+      <select name="payroll_specialist_id" id="payrollSpecialistField">
+        <option value="">-- Auto-assigned to Payroll Team --</option>
+        {% for u in payroll_specialists %}<option value="{{ u.id }}">{{ u.full_name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div id="clinicalLiaisonWrapper" style="display:none;">
+      <label>Clinical Liaison</label>
+      <select name="clinical_liaison_id" id="clinicalLiaisonField">
+        <option value="">-- Auto-assigned to Lauren Redig --</option>
+        {% for u in clinical_liaisons %}<option value="{{ u.id }}">{{ u.full_name }}</option>{% endfor %}
+      </select>
+    </div>
   </div>
 
   <div class="section-header">Escalation Detail</div>
   <div class="form-grid">
     <div class="full">
-      <label>Details/What Happened?</label>
-      <textarea name="details"></textarea>
+      <label>Details/What Happened? *</label>
+      <div class="richtext-editor" id="detailsEditor" contenteditable="true" data-placeholder="Describe what happened..."></div>
+      <textarea name="details" id="detailsHidden" required class="richtext-sync-field"></textarea>
     </div>
     <div>
       <label>Action To</label>
@@ -139,10 +154,13 @@ const subtypeWrapper = document.getElementById('subtypeWrapper');
 const subtypeField = document.getElementById('subtypeField');
 const complianceField = document.getElementById('complianceField');
 const complianceRequiredMark = document.getElementById('complianceRequiredMark');
+const payrollSpecialistWrapper = document.getElementById('payrollSpecialistWrapper');
+const clinicalLiaisonWrapper = document.getElementById('clinicalLiaisonWrapper');
 
 function syncSubtype() {
   const type = typeField.value;
   const isClinical = CLINICAL_TYPES.includes(type);
+  const isPayroll = type === 'Payroll & Timekeeping';
 
   if (isClinical) {
     subtypeWrapper.style.display = '';
@@ -156,10 +174,33 @@ function syncSubtype() {
   }
 
   // Compliance Specialist is not required for Clinical - Traveler/Client Initiated
-  complianceField.required = !isClinical;
-  complianceRequiredMark.style.display = isClinical ? 'none' : '';
+  // or Payroll & Timekeeping escalations.
+  const complianceNotRequired = isClinical || isPayroll;
+  complianceField.required = !complianceNotRequired;
+  complianceRequiredMark.style.display = complianceNotRequired ? 'none' : '';
+
+  // Payroll Specialist field only shown for Payroll & Timekeeping (never required)
+  payrollSpecialistWrapper.style.display = isPayroll ? '' : 'none';
+
+  // Clinical Liaison field only shown for Clinical types
+  clinicalLiaisonWrapper.style.display = isClinical ? '' : 'none';
 }
 typeField.addEventListener('change', syncSubtype);
 syncSubtype();
+
+// --- Rich text editor (contenteditable) sync for Details/What Happened ---
+// Bullet lists and paragraph breaks pasted from Word/Docs/etc. are preserved
+// by the browser's native contenteditable paste handling; we just need to
+// keep the hidden textarea (the field actually submitted/validated) in sync.
+const detailsEditor = document.getElementById('detailsEditor');
+const detailsHidden = document.getElementById('detailsHidden');
+const detailsForm = detailsEditor.closest('form');
+
+function syncDetailsHidden() {
+  detailsHidden.value = detailsEditor.innerHTML.trim();
+}
+detailsEditor.addEventListener('input', syncDetailsHidden);
+detailsEditor.addEventListener('blur', syncDetailsHidden);
+detailsForm.addEventListener('submit', syncDetailsHidden);
 </script>
 {% endblock %}

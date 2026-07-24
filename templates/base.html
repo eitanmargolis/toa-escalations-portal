@@ -20,8 +20,10 @@
   <div class="tabs">
     <a href="{{ url_for('new_escalation') }}" class="{{ 'active' if request.endpoint=='new_escalation' }}">Create an Escalation</a>
     <a href="{{ url_for('my_open_escalations') }}" class="{{ 'active' if request.endpoint=='my_open_escalations' }}">My Open Escalations</a>
+    {% if current_user.is_manager_or_admin() %}
     <a href="{{ url_for('all_escalations') }}" class="{{ 'active' if request.endpoint in ['all_escalations','view_escalation'] }}">All Escalations</a>
     <a href="{{ url_for('reporting') }}" class="{{ 'active' if request.endpoint=='reporting' }}">Reporting</a>
+    {% endif %}
     {% if current_user.is_admin() %}
     <a href="{{ url_for('manage_users') }}" class="{{ 'active' if request.endpoint=='manage_users' }}">Manage Users</a>
     {% endif %}

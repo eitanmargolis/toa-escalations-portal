@@ -16,7 +16,7 @@
             {% if key in selected_fields %}
               <td>
                 {% set val = e[key] if key in ['id'] else e.__dict__.get(key) %}
-                {% if key in ['recruiter_id','sales_rep_id','compliance_specialist_id','recruiter_manager_id','action_to_id'] %}
+                {% if key in ['recruiter_id','sales_rep_id','compliance_specialist_id','recruiter_manager_id','action_to_id','payroll_specialist_id','clinical_liaison_id'] %}
                   {{ users_by_id.get(val, '-') }}
                 {% elif val is sameas true %}Yes
                 {% elif val is sameas false %}No

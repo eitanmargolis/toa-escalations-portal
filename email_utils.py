@@ -73,13 +73,17 @@ def send_action_needed_email(action_to_user, escalation, base_url):
 
 
 def send_new_escalation_email(recipient_user, escalation, base_url):
+    from models import CLINICAL_TYPES
     link = f"{base_url}/escalations/{escalation.id}"
     subject = f"New Escalation Record Created for {escalation.candidate}"
+    subtype_line = ""
+    if escalation.type in CLINICAL_TYPES and escalation.subtype:
+        subtype_line = f"<b>Subtype:</b> {escalation.subtype}<br/>\n    "
     body = f"""
     <p>Hi Team,</p>
     <p>Please see this new Escalation Record created for {escalation.candidate}'s placement at {escalation.facility}</p>
     <p><b>Type:</b> {escalation.type}<br/>
-    <b>Details/What Happened?:</b> {escalation.details or ''}<br/>
+    {subtype_line}<b>Details/What Happened?:</b> {escalation.details or ''}<br/>
     <b>Danger of Cancelling:</b> {escalation.danger_of_cancelling or ''}</p>
     <p><a href="{link}">Click HERE to view the Escalation record.</a></p>
     """

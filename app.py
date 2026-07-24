@@ -18,11 +18,14 @@ from werkzeug.utils import secure_filename
 import cloudinary
 import cloudinary.uploader
 import cloudinary.utils
+import bleach
 
 from models import (
     db, User, Escalation, Comment, SavedReportView, Attachment,
     ROLES, STANDARD_ROLES, ROLE_FOR_RECRUITER_FIELD, ROLE_FOR_SALES_REP_FIELD, ROLE_FOR_COMPLIANCE_FIELD,
-    ESCALATION_TYPES, CLINICAL_TYPES, SUBTYPES_BY_TYPE, YES_NO, STATUS_VALUES, OPEN_STATUSES, CLOSED_STATUSES,
+    ROLE_FOR_PAYROLL_SPECIALIST_FIELD,
+    ESCALATION_TYPES, ALL_ESCALATION_TYPES_FOR_DISPLAY, CLINICAL_TYPES, SUBTYPES_BY_TYPE, YES_NO,
+    STATUS_VALUES, OPEN_STATUSES, CLOSED_STATUSES,
     BEST_TIME_SLOTS, TIME_ZONES, REPORT_FIELDS,
 )
 from email_utils import (
@@ -84,6 +87,35 @@ def manager_or_admin(user):
     return user.role in ("Admin", "Manager")
 
 
+def manager_or_admin_required(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if not current_user.is_authenticated or not manager_or_admin(current_user):
+            abort(403)
+        return fn(*args, **kwargs)
+    return wrapper
+
+
+# Well-known service accounts auto-assigned to specific escalation types.
+PAYROLL_TEAM_EMAIL = "payroll@coastmedicalservice.com"
+CLINICAL_LIAISON_EMAIL = "clinical@coastmedicalservice.com"
+
+# Tags/attrs allowed in rich-text fields (Details/What Happened + Discussion
+# comments) - anything else (including <script>) is stripped on save.
+RICH_TEXT_ALLOWED_TAGS = ["p", "br", "ul", "ol", "li", "b", "strong", "i", "em", "u", "div", "span"]
+RICH_TEXT_ALLOWED_ATTRS = {}
+
+
+def sanitize_html(raw_html):
+    """Strip dangerous tags/attributes from user-submitted rich text (contenteditable HTML)."""
+    if not raw_html:
+        return raw_html
+    cleaned = bleach.clean(
+        raw_html, tags=RICH_TEXT_ALLOWED_TAGS, attributes=RICH_TEXT_ALLOWED_ATTRS, strip=True,
+    )
+    return cleaned.strip() or None
+
+
 def save_uploaded_file(file_storage, confidential=False):
     """Save an uploaded werkzeug FileStorage.
 
@@ -141,6 +173,40 @@ def sales_rep_options():
 
 def compliance_options():
     return User.query.filter_by(role=ROLE_FOR_COMPLIANCE_FIELD).order_by(User.first_name).all()
+
+
+def payroll_specialist_options():
+    return User.query.filter_by(role=ROLE_FOR_PAYROLL_SPECIALIST_FIELD).order_by(User.first_name).all()
+
+
+def clinical_liaison_options():
+    # Clinical Liaison is filled by leadership - eligible list includes Manager
+    # (and Admin) role users, unlike the other role-scoped fields above.
+    return User.query.filter(User.role.in_(["Manager", "Admin"])).order_by(User.first_name).all()
+
+
+def get_payroll_team_user():
+    return User.query.filter(db.func.lower(User.email) == PAYROLL_TEAM_EMAIL).first()
+
+
+def get_clinical_liaison_user():
+    return User.query.filter(db.func.lower(User.email) == CLINICAL_LIAISON_EMAIL).first()
+
+
+def status_css_class(status):
+    mapping = {
+        "Open": "status-green",
+        "Clinical Acknowledged": "status-blue",
+        "In Process": "status-yellow",
+        "Clinical Call Complete": "status-blue",
+        "Needs Follow Up": "status-yellow",
+        "Closed - Resolved": "status-red",
+        "Closed - Canceled": "status-red",
+    }
+    return mapping.get(status, "status-green")
+
+
+app.jinja_env.filters["status_css_class"] = status_css_class
 
 
 # ---------------------------------------------------------------------------
@@ -229,7 +295,18 @@ def new_escalation():
     recruiters = recruiter_options()
     sales_reps = sales_rep_options()
     compliance_specialists = compliance_options()
+    payroll_specialists = payroll_specialist_options()
+    clinical_liaisons = clinical_liaison_options()
     all_users = User.query.order_by(User.first_name).all()
+
+    def render_form(f):
+        return render_template("escalation_form.html", esc=None, form=f,
+                                recruiters=recruiters, sales_reps=sales_reps, compliance_specialists=compliance_specialists,
+                                payroll_specialists=payroll_specialists, clinical_liaisons=clinical_liaisons,
+                                all_users=all_users,
+                                types=ESCALATION_TYPES, clinical_types=CLINICAL_TYPES, subtypes_by_type=SUBTYPES_BY_TYPE,
+                                yes_no=YES_NO, statuses=STATUS_VALUES,
+                                best_times=BEST_TIME_SLOTS, time_zones=TIME_ZONES, mode="create")
 
     if request.method == "POST":
         f = request.form
@@ -250,7 +327,9 @@ def new_escalation():
             recruiter_id=f.get("recruiter_id") or None,
             sales_rep_id=f.get("sales_rep_id") or None,
             compliance_specialist_id=f.get("compliance_specialist_id") or None,
-            details=f.get("details") or None,
+            payroll_specialist_id=f.get("payroll_specialist_id") or None,
+            clinical_liaison_id=f.get("clinical_liaison_id") or None,
+            details=sanitize_html(f.get("details")),
             action_to_id=f.get("action_to_id") or None,
             action_item=f.get("action_item") or None,
             danger_of_cancelling=f.get("danger_of_cancelling") or None,
@@ -261,43 +340,50 @@ def new_escalation():
             created_by_id=current_user.id,
         )
 
-      # Required field validation
+        # Required field validation
         required_missing = []
         for label, val in [
             ("Type", esc.type), ("Candidate", esc.candidate),
             ("Facility", esc.facility), ("Assignment URL", esc.assignment_url),
             ("Discussed with Coast Manager", esc.discussed_with_manager),
             ("Recruiter", esc.recruiter_id), ("Sales Rep", esc.sales_rep_id),
+            ("Details/What Happened?", esc.details),
         ]:
             if not val:
                 required_missing.append(label)
         # Compliance Specialist is not required for Clinical - Traveler/Client Initiated
-        if esc.type not in CLINICAL_TYPES and not esc.compliance_specialist_id:
+        # or for Payroll & Timekeeping escalations.
+        if esc.type not in CLINICAL_TYPES and esc.type != "Payroll & Timekeeping" and not esc.compliance_specialist_id:
             required_missing.append("Compliance Specialist")
         if esc.type in CLINICAL_TYPES and not esc.subtype:
             required_missing.append("Subtype")
 
         if required_missing:
             flash(f"Please fill out required field(s): {', '.join(required_missing)}", "error")
-            return render_template("escalation_form.html", esc=None, form=f,
-                                    recruiters=recruiters, sales_reps=sales_reps, compliance_specialists=compliance_specialists,
-                                    types=ESCALATION_TYPES, clinical_types=CLINICAL_TYPES, subtypes_by_type=SUBTYPES_BY_TYPE,
-                                    yes_no=YES_NO, statuses=STATUS_VALUES,
-                                    best_times=BEST_TIME_SLOTS, time_zones=TIME_ZONES, mode="create")
+            return render_form(f)
 
         # VR2: Best Day to Call Traveler requires Best Time + Time Zone
         if esc.best_day_to_call and not (esc.best_time_to_call and esc.time_zone):
             flash("Please select Best Time to Call Traveler and the Time Zone field to save the record.", "error")
-            return render_template("escalation_form.html", esc=None, form=f,
-                                    recruiters=recruiters, sales_reps=sales_reps, compliance_specialists=compliance_specialists,
-                                    types=ESCALATION_TYPES, clinical_types=CLINICAL_TYPES, subtypes_by_type=SUBTYPES_BY_TYPE,
-                                    yes_no=YES_NO, statuses=STATUS_VALUES,
-                                    best_times=BEST_TIME_SLOTS, time_zones=TIME_ZONES, mode="create")
+            return render_form(f)
 
         # Auto-set Recruiter Manager from the Recruiter's manager on their User record
         recruiter = db.session.get(User, int(esc.recruiter_id)) if esc.recruiter_id else None
         if recruiter and recruiter.manager_id:
             esc.recruiter_manager_id = recruiter.manager_id
+
+        # Auto-set Payroll Specialist -> "Payroll Team" user for Payroll & Timekeeping escalations
+        if esc.type == "Payroll & Timekeeping" and not esc.payroll_specialist_id:
+            payroll_team = get_payroll_team_user()
+            if payroll_team:
+                esc.payroll_specialist_id = payroll_team.id
+
+        # Auto-set Clinical Liaison -> Lauren Redig for Clinical escalations
+        if esc.type in CLINICAL_TYPES and not esc.clinical_liaison_id:
+            liaison = get_clinical_liaison_user()
+            if liaison:
+                esc.clinical_liaison_id = liaison.id
+            # If she isn't found in the User table, just skip - don't crash creation.
 
         db.session.add(esc)
         db.session.commit()
@@ -313,8 +399,13 @@ def new_escalation():
                 ))
         db.session.commit()
 
-        # Email automation #2: notify Recruiter, Sales Rep, Compliance Specialist, Recruiter Manager
+        # Email automation #2: notify Recruiter, Sales Rep, Compliance Specialist, Recruiter Manager,
+        # plus the Payroll Specialist (Payroll & Timekeeping) and/or Clinical Liaison (Clinical types).
         recipients = {esc.recruiter, esc.sales_rep, esc.compliance_specialist, esc.recruiter_manager}
+        if esc.type == "Payroll & Timekeeping":
+            recipients.add(esc.payroll_specialist)
+        if esc.type in CLINICAL_TYPES:
+            recipients.add(esc.clinical_liaison)
         for u in recipients:
             if u:
                 send_new_escalation_email(u, esc, base_url())
@@ -324,6 +415,8 @@ def new_escalation():
 
     return render_template("escalation_form.html", esc=None, form={},
                             recruiters=recruiters, sales_reps=sales_reps, compliance_specialists=compliance_specialists,
+                            payroll_specialists=payroll_specialists, clinical_liaisons=clinical_liaisons,
+                            all_users=all_users,
                             types=ESCALATION_TYPES, clinical_types=CLINICAL_TYPES, subtypes_by_type=SUBTYPES_BY_TYPE,
                             yes_no=YES_NO, statuses=STATUS_VALUES,
                             best_times=BEST_TIME_SLOTS, time_zones=TIME_ZONES, mode="create")
@@ -337,13 +430,15 @@ def new_escalation():
 def my_open_escalations():
     uid = current_user.id
     escalations = Escalation.query.filter(
-        Escalation.status.in_(OPEN_STATUSES),
+        Escalation.status.notin_(CLOSED_STATUSES),
         db.or_(
             Escalation.recruiter_id == uid,
             Escalation.sales_rep_id == uid,
             Escalation.compliance_specialist_id == uid,
             Escalation.recruiter_manager_id == uid,
             Escalation.action_to_id == uid,
+            Escalation.payroll_specialist_id == uid,
+            Escalation.clinical_liaison_id == uid,
         ),
     ).order_by(Escalation.created_at.desc()).all()
     return render_template("my_open_escalations.html", escalations=escalations)
@@ -354,6 +449,7 @@ def my_open_escalations():
 # ---------------------------------------------------------------------------
 @app.route("/escalations")
 @login_required
+@manager_or_admin_required
 def all_escalations():
     users = User.query.order_by(User.first_name).all()
     query = Escalation.query
@@ -404,6 +500,8 @@ def view_escalation(escalation_id):
     recruiters = recruiter_options()
     sales_reps = sales_rep_options()
     compliance_specialists = compliance_options()
+    payroll_specialists = payroll_specialist_options()
+    clinical_liaisons = clinical_liaison_options()
     all_users = User.query.order_by(User.first_name).all()
     can_manage = manager_or_admin(current_user)
 
@@ -462,7 +560,9 @@ def view_escalation(escalation_id):
         esc.recruiter_id = f.get("recruiter_id") or esc.recruiter_id
         esc.sales_rep_id = f.get("sales_rep_id") or esc.sales_rep_id
         esc.compliance_specialist_id = f.get("compliance_specialist_id") or esc.compliance_specialist_id
-        esc.details = f.get("details") or None
+        esc.payroll_specialist_id = f.get("payroll_specialist_id") or esc.payroll_specialist_id
+        esc.clinical_liaison_id = f.get("clinical_liaison_id") or esc.clinical_liaison_id
+        esc.details = sanitize_html(f.get("details"))
         esc.action_to_id = new_action_to_id
         esc.action_item = new_action_item
         esc.danger_of_cancelling = f.get("danger_of_cancelling") or None
@@ -478,6 +578,18 @@ def view_escalation(escalation_id):
         # Confidential Information - Manager/Admin only, ignore silently for anyone else
         if can_manage and "confidential_notes" in f:
             esc.confidential_notes = f.get("confidential_notes") or None
+
+        # Auto-set Payroll Specialist -> "Payroll Team" user for Payroll & Timekeeping escalations
+        if esc.type == "Payroll & Timekeeping" and not esc.payroll_specialist_id:
+            payroll_team = get_payroll_team_user()
+            if payroll_team:
+                esc.payroll_specialist_id = payroll_team.id
+
+        # Auto-set Clinical Liaison -> Lauren Redig for Clinical escalations
+        if esc.type in CLINICAL_TYPES and not esc.clinical_liaison_id:
+            liaison = get_clinical_liaison_user()
+            if liaison:
+                esc.clinical_liaison_id = liaison.id
 
         db.session.commit()
 
@@ -508,9 +620,15 @@ def view_escalation(escalation_id):
         if str(new_action_to_id) != str(old_action_to_id) and esc.action_to:
             send_action_needed_email(esc.action_to, esc, base_url())
 
-        # Email automation: Status changed -> notify Recruiter, Sales Rep, Compliance Specialist
+        # Email automation: Status changed -> notify Recruiter, Sales Rep, Compliance Specialist,
+        # plus the Payroll Specialist (Payroll & Timekeeping) and/or Clinical Liaison (Clinical types).
         if new_status != old_status:
-            for u in {esc.recruiter, esc.sales_rep, esc.compliance_specialist}:
+            status_recipients = {esc.recruiter, esc.sales_rep, esc.compliance_specialist}
+            if esc.type == "Payroll & Timekeeping":
+                status_recipients.add(esc.payroll_specialist)
+            if esc.type in CLINICAL_TYPES:
+                status_recipients.add(esc.clinical_liaison)
+            for u in status_recipients:
                 if u:
                     send_status_changed_email(u, esc, new_status, base_url())
 
@@ -520,8 +638,9 @@ def view_escalation(escalation_id):
     return render_template(
         "escalation_detail.html", esc=esc,
         recruiters=recruiters, sales_reps=sales_reps, compliance_specialists=compliance_specialists,
+        payroll_specialists=payroll_specialists, clinical_liaisons=clinical_liaisons,
         all_users=all_users,
-        types=ESCALATION_TYPES, clinical_types=CLINICAL_TYPES, subtypes_by_type=SUBTYPES_BY_TYPE,
+        types=ALL_ESCALATION_TYPES_FOR_DISPLAY, clinical_types=CLINICAL_TYPES, subtypes_by_type=SUBTYPES_BY_TYPE,
         yes_no=YES_NO, statuses=STATUS_VALUES,
         best_times=BEST_TIME_SLOTS, time_zones=TIME_ZONES,
         can_manage=can_manage,
@@ -532,7 +651,8 @@ def view_escalation(escalation_id):
 @login_required
 def add_comment(escalation_id):
     esc = db.session.get(Escalation, escalation_id) or abort(404)
-    body = request.form.get("body", "").strip()
+    raw_body = request.form.get("body", "").strip()
+    body = sanitize_html(raw_body) or ""
     attachment = save_uploaded_file(request.files.get("attachment"), confidential=False)
     if not body and not attachment:
         return redirect(url_for("view_escalation", escalation_id=escalation_id))
@@ -604,6 +724,7 @@ def apply_condition(esc, field_key, operator, value):
 
 @app.route("/reporting", methods=["GET"])
 @login_required
+@manager_or_admin_required
 def reporting():
     all_escalations_list = Escalation.query.order_by(Escalation.created_at.desc()).all()
 
@@ -662,6 +783,7 @@ def reporting():
 
 @app.route("/reporting/save", methods=["POST"])
 @login_required
+@manager_or_admin_required
 def save_report_view():
     name = request.form.get("view_name", "").strip()
     if not name:
@@ -698,6 +820,7 @@ def save_report_view():
 
 @app.route("/reporting/view/<int:view_id>")
 @login_required
+@manager_or_admin_required
 def load_report_view(view_id):
     view = db.session.get(SavedReportView, view_id) or abort(404)
     fields = json.loads(view.fields_json)
@@ -839,6 +962,16 @@ with app.app_context():
         db.session.add(_admin)
         db.session.commit()
         print(f"Seeded admin {_seed_email}")
+
+    # Auto-seed the "Payroll Team" service user so Payroll & Timekeeping escalations
+    # always have someone to auto-assign as Payroll Specialist. Matched by email,
+    # created with a random unusable password (same pattern as create_user()/seed-admin).
+    if not User.query.filter(db.func.lower(User.email) == PAYROLL_TEAM_EMAIL).first():
+        _payroll_team = User(first_name="Payroll", last_name="Team", email=PAYROLL_TEAM_EMAIL, role="Payroll")
+        _payroll_team.set_password(secrets.token_urlsafe(16))
+        db.session.add(_payroll_team)
+        db.session.commit()
+        print(f"Seeded service user {PAYROLL_TEAM_EMAIL}")
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)

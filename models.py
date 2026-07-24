@@ -8,28 +8,35 @@ db = SQLAlchemy()
 # ---------------------------------------------------------------------------
 # Picklist values (single source of truth - used by forms, validation, filters)
 # ---------------------------------------------------------------------------
-ROLES = ["Admin", "Manager", "Recruiter", "Account Manager", "Compliance Specialist"]
+ROLES = ["Admin", "Manager", "Recruiter", "Account Manager", "Compliance Specialist", "Payroll", "Compliance"]
 
-# Roles that are NOT Admin/Manager - i.e. everyday portal users
-STANDARD_ROLES = ["Recruiter", "Account Manager", "Compliance Specialist"]
+# Roles that are NOT Admin/Manager - i.e. everyday portal users (identical page access)
+STANDARD_ROLES = ["Recruiter", "Account Manager", "Compliance Specialist", "Payroll", "Compliance"]
 
 # Which portal role fills which Escalation lookup field
 ROLE_FOR_RECRUITER_FIELD = "Recruiter"
 ROLE_FOR_SALES_REP_FIELD = "Account Manager"
 ROLE_FOR_COMPLIANCE_FIELD = "Compliance Specialist"
+ROLE_FOR_PAYROLL_SPECIALIST_FIELD = "Payroll"
+
+# Type values retired from the CREATE form's picklist but still valid data on
+# older existing records (kept out of ESCALATION_TYPES so they don't appear as
+# selectable options for NEW escalations).
+RETIRED_ESCALATION_TYPES = ["Performance & Conduct", "Attendance", "Other"]
 
 ESCALATION_TYPES = [
     "Clinical - Traveler Initiated",
     "Clinical - Client Initiated",
     "Compliance & Credentialing",
     "Payroll & Timekeeping",
-    "Performance & Conduct",
-    "Attendance",
     "Scheduling & Hours",
     "Housing & Travel",
     "Contract & Extension",
-    "Other",
 ]
+
+# Full set of type values valid for DISPLAY purposes (new + retired) - used on
+# the detail/edit page so old records don't lose their Type option/value.
+ALL_ESCALATION_TYPES_FOR_DISPLAY = ESCALATION_TYPES + RETIRED_ESCALATION_TYPES
 
 CLINICAL_TYPES = ["Clinical - Traveler Initiated", "Clinical - Client Initiated"]
 
@@ -95,6 +102,8 @@ REPORT_FIELDS = [
     ("Sales Rep", "sales_rep_id"),
     ("Compliance Specialist", "compliance_specialist_id"),
     ("Recruiter Manager", "recruiter_manager_id"),
+    ("Payroll Specialist", "payroll_specialist_id"),
+    ("Clinical Liaison", "clinical_liaison_id"),
     ("Details/What Happened?", "details"),
     ("Action To", "action_to_id"),
     ("Action Item", "action_item"),
@@ -172,11 +181,17 @@ class Escalation(db.Model):
     sales_rep_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     sales_rep = db.relationship("User", foreign_keys=[sales_rep_id])
 
-    compliance_specialist_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)  # not required for   	Clinical types
+    compliance_specialist_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)  # not required for Clinical types
     compliance_specialist = db.relationship("User", foreign_keys=[compliance_specialist_id])
 
     recruiter_manager_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     recruiter_manager = db.relationship("User", foreign_keys=[recruiter_manager_id])
+
+    payroll_specialist_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)  # auto-set for Payroll & Timekeeping type
+    payroll_specialist = db.relationship("User", foreign_keys=[payroll_specialist_id])
+
+    clinical_liaison_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)  # auto-set for Clinical types
+    clinical_liaison = db.relationship("User", foreign_keys=[clinical_liaison_id])
 
     # --- Escalation Detail ---
     details = db.Column(db.Text, nullable=True)
@@ -203,7 +218,8 @@ class Escalation(db.Model):
 
     def user_ids_involved(self):
         return {self.recruiter_id, self.sales_rep_id, self.compliance_specialist_id,
-                self.recruiter_manager_id, self.action_to_id}
+                self.recruiter_manager_id, self.action_to_id,
+                self.payroll_specialist_id, self.clinical_liaison_id}
 
 
 class Comment(db.Model):
