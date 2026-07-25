@@ -315,6 +315,13 @@ def new_escalation():
         if f.get("type") not in CLINICAL_TYPES:
             subtype = None
 
+        # Compliance Specialist is removed from the page layout entirely for
+        # Clinical - Traveler/Client Initiated escalations, so never persist a
+        # value for those types even if one was somehow submitted.
+        compliance_specialist_id = f.get("compliance_specialist_id") or None
+        if f.get("type") in CLINICAL_TYPES:
+            compliance_specialist_id = None
+
         esc = Escalation(
             type=f.get("type"),
             subtype=subtype,
@@ -326,7 +333,7 @@ def new_escalation():
             status="Open",
             recruiter_id=f.get("recruiter_id") or None,
             sales_rep_id=f.get("sales_rep_id") or None,
-            compliance_specialist_id=f.get("compliance_specialist_id") or None,
+            compliance_specialist_id=compliance_specialist_id,
             payroll_specialist_id=f.get("payroll_specialist_id") or None,
             clinical_liaison_id=f.get("clinical_liaison_id") or None,
             details=sanitize_html(f.get("details")),
@@ -559,7 +566,10 @@ def view_escalation(escalation_id):
         esc.status = new_status
         esc.recruiter_id = f.get("recruiter_id") or esc.recruiter_id
         esc.sales_rep_id = f.get("sales_rep_id") or esc.sales_rep_id
-        esc.compliance_specialist_id = f.get("compliance_specialist_id") or esc.compliance_specialist_id
+        if new_type in CLINICAL_TYPES:
+            esc.compliance_specialist_id = None
+        else:
+            esc.compliance_specialist_id = f.get("compliance_specialist_id") or esc.compliance_specialist_id
         esc.payroll_specialist_id = f.get("payroll_specialist_id") or esc.payroll_specialist_id
         esc.clinical_liaison_id = f.get("clinical_liaison_id") or esc.clinical_liaison_id
         esc.details = sanitize_html(f.get("details"))

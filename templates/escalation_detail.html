@@ -65,9 +65,9 @@
             {% for u in sales_reps %}<option value="{{ u.id }}" {{ 'selected' if esc.sales_rep_id==u.id }}>{{ u.full_name }}</option>{% endfor %}
           </select>
         </div>
-        <div>
+        <div id="complianceWrapper" style="{{ 'display:none;' if esc.type in clinical_types else '' }}">
           <label>Compliance Specialist</label>
-          <select name="compliance_specialist_id">
+          <select name="compliance_specialist_id" id="complianceField">
             {% for u in compliance_specialists %}<option value="{{ u.id }}" {{ 'selected' if esc.compliance_specialist_id==u.id }}>{{ u.full_name }}</option>{% endfor %}
           </select>
         </div>
@@ -214,6 +214,8 @@ const subtypeWrapper = document.getElementById('subtypeWrapper');
 const subtypeField = document.getElementById('subtypeField');
 const payrollSpecialistWrapper = document.getElementById('payrollSpecialistWrapper');
 const clinicalLiaisonWrapper = document.getElementById('clinicalLiaisonWrapper');
+const complianceWrapper = document.getElementById('complianceWrapper');
+const complianceField = document.getElementById('complianceField');
 
 function syncSubtype(preserveCurrent) {
   const type = typeField.value;
@@ -234,6 +236,16 @@ function syncSubtype(preserveCurrent) {
 
   if (payrollSpecialistWrapper) payrollSpecialistWrapper.style.display = isPayroll ? '' : 'none';
   if (clinicalLiaisonWrapper) clinicalLiaisonWrapper.style.display = isClinical ? '' : 'none';
+
+  // Compliance Specialist is removed from the page entirely for Clinical types.
+  if (complianceWrapper) {
+    if (isClinical) {
+      complianceWrapper.style.display = 'none';
+      if (complianceField) complianceField.value = '';
+    } else {
+      complianceWrapper.style.display = '';
+    }
+  }
 }
 typeField.addEventListener('change', () => syncSubtype(false));
 syncSubtype(true);
