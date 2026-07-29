@@ -8,30 +8,44 @@ db = SQLAlchemy()
 # ---------------------------------------------------------------------------
 # Picklist values (single source of truth - used by forms, validation, filters)
 # ---------------------------------------------------------------------------
-ROLES = ["Admin", "Manager", "Recruiter", "Account Manager", "Compliance Specialist", "Payroll", "Compliance"]
+# "Director" carries the old manager-tier permissions (status changes,
+# Confidential section, Reporting/All Escalations tabs). "Manager" is a NEW
+# standard-tier role added in this batch (see item 11) whose only special
+# behavior is expanded visibility into their direct reports' records.
+ROLES = [
+    "Admin", "Director", "Manager", "Recruiter", "Account Manager",
+    "Compliance Specialist", "Payroll", "Compliance", "AC",
+]
 
-# Roles that are NOT Admin/Manager - i.e. everyday portal users (identical page access)
-STANDARD_ROLES = ["Recruiter", "Account Manager", "Compliance Specialist", "Payroll", "Compliance"]
+# Roles that are NOT Admin/Director - i.e. everyday portal users (identical page access)
+STANDARD_ROLES = [
+    "Recruiter", "Account Manager", "Compliance Specialist", "Payroll", "Compliance", "Manager", "AC",
+]
 
 # Which portal role fills which Escalation lookup field
 ROLE_FOR_RECRUITER_FIELD = "Recruiter"
 ROLE_FOR_SALES_REP_FIELD = "Account Manager"
 ROLE_FOR_COMPLIANCE_FIELD = "Compliance Specialist"
 ROLE_FOR_PAYROLL_SPECIALIST_FIELD = "Payroll"
+ROLE_FOR_AC_FIELD = "AC"
 
 # Type values retired from the CREATE form's picklist but still valid data on
 # older existing records (kept out of ESCALATION_TYPES so they don't appear as
 # selectable options for NEW escalations).
-RETIRED_ESCALATION_TYPES = ["Performance & Conduct", "Attendance", "Other"]
+RETIRED_ESCALATION_TYPES = [
+    "Performance & Conduct", "Attendance", "Other",
+    "Scheduling & Hours", "Housing & Travel",
+]
 
 ESCALATION_TYPES = [
     "Clinical - Traveler Initiated",
     "Clinical - Client Initiated",
     "Compliance & Credentialing",
     "Payroll & Timekeeping",
-    "Scheduling & Hours",
-    "Housing & Travel",
     "Contract & Extension",
+    "Personal (Yellow Flag)",
+    "Pre-Start",
+    "Contract",
 ]
 
 # Full set of type values valid for DISPLAY purposes (new + retired) - used on
@@ -40,6 +54,11 @@ ALL_ESCALATION_TYPES_FOR_DISPLAY = ESCALATION_TYPES + RETIRED_ESCALATION_TYPES
 
 CLINICAL_TYPES = ["Clinical - Traveler Initiated", "Clinical - Client Initiated"]
 
+TYPE_COMPLIANCE = "Compliance & Credentialing"
+TYPE_PAYROLL = "Payroll & Timekeeping"
+TYPE_CONTRACT = "Contract"
+TYPE_PRESTART = "Pre-Start"
+
 SUBTYPES_BY_TYPE = {
     "Clinical - Traveler Initiated": [
         "Personal", "Unit Concern", "Patient Care", "Pre-Start Cancel", "Relias Coaching", "Other",
@@ -47,7 +66,23 @@ SUBTYPES_BY_TYPE = {
     "Clinical - Client Initiated": [
         "Patient Care", "Professionalism", "Attendance", "Other",
     ],
+    TYPE_COMPLIANCE: [
+        "PPW", "PPW MIA", "Expiring Items", "Licensing",
+    ],
+    TYPE_PAYROLL: [
+        "Paycheck Error", "Late", "Reimbursements", "Timekeeping",
+    ],
+    TYPE_CONTRACT: [
+        "Shift/Scheduling", "Pay Changes",
+    ],
 }
+
+# Types (besides Clinical) for which Subtype is a required field.
+REQUIRED_SUBTYPE_TYPES = [TYPE_COMPLIANCE, TYPE_PAYROLL, TYPE_CONTRACT]
+
+# Types for which "Discussed with Coast Manager?" is NOT a required field
+# (it's required for every other type by default).
+DISCUSSED_WITH_MANAGER_NOT_REQUIRED_TYPES = [TYPE_COMPLIANCE, TYPE_PAYROLL]
 
 YES_NO = ["Yes", "No"]
 
@@ -60,6 +95,15 @@ STATUS_VALUES = [
     "Closed - Resolved",
     "Closed - Canceled",
 ]
+
+# Per-type restricted status picklists. Types not present here fall back to
+# the full STATUS_VALUES list. Existing/legacy records whose current status
+# value isn't in the type's restricted list are still allowed to display and
+# save unchanged (see app.py validation) - this only restricts NEW selections.
+STATUS_VALUES_BY_TYPE = {
+    TYPE_COMPLIANCE: ["Open", "Closed - Resolved", "Closed - Canceled"],
+    TYPE_PAYROLL: ["Open", "Investigating", "Information Needed", "Closed - Resolved"],
+}
 
 # Statuses that keep a record in "My Open Escalations"
 CLOSED_STATUSES = ["Closed - Resolved", "Closed - Canceled"]
@@ -100,10 +144,13 @@ REPORT_FIELDS = [
     ("Status", "status"),
     ("Recruiter", "recruiter_id"),
     ("Sales Rep", "sales_rep_id"),
+    ("AC", "ac_id"),
     ("Compliance Specialist", "compliance_specialist_id"),
     ("Recruiter Manager", "recruiter_manager_id"),
     ("Payroll Specialist", "payroll_specialist_id"),
+    ("Payroll Specialist Assigned", "payroll_specialist_assigned"),
     ("Clinical Liaison", "clinical_liaison_id"),
+    ("Compliance Manager", "compliance_manager_id"),
     ("Details/What Happened?", "details"),
     ("Action To", "action_to_id"),
     ("Action Item", "action_item"),
@@ -112,7 +159,21 @@ REPORT_FIELDS = [
     ("Best Day to Call Traveler", "best_day_to_call"),
     ("Best Time to Call Traveler", "best_time_to_call"),
     ("Time Zone", "time_zone"),
-    ("Complaint Outcome", "complaint_outcome"),
+    ("Coast Deadline", "coast_deadline"),
+    ("Facility Deadline", "facility_deadline"),
+    ("Pushed Start?", "pushed_start"),
+    ("Pushed Start Notes", "pushed_start_notes"),
+    ("WE Date", "we_date"),
+    ("Date to be paid", "date_to_be_paid"),
+    ("Pre-Start Compliance Specialist", "prestart_compliance_specialist_id"),
+    ("Pre-Start Compliance Manager", "prestart_compliance_manager_id"),
+    ("DNR Facility", "dnr_facility"),
+    ("DNR Facility Notes", "dnr_facility_notes"),
+    ("DNR MSP", "dnr_msp"),
+    ("DNR MSP Notes", "dnr_msp_notes"),
+    ("DNR Hospital System", "dnr_hospital_system"),
+    ("DNR Hospital System Notes", "dnr_hospital_system_notes"),
+    ("Escalation Outcome", "complaint_outcome"),
     ("Clinical Team Save", "clinical_team_save"),
     ("Facility Resolution", "facility_resolution"),
     ("Is Traveler Canceled?", "is_traveler_canceled"),
@@ -126,9 +187,16 @@ class User(UserMixin, db.Model):
     last_name = db.Column(db.String(80), nullable=False)
     email = db.Column(db.String(255), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=True)
-    role = db.Column(db.String(30), nullable=False, default="Recruiter")  # Admin / Manager / Recruiter / Account Manager / Compliance Specialist
+    role = db.Column(db.String(30), nullable=False, default="Recruiter")  # Admin / Director / Manager / Recruiter / Account Manager / Compliance Specialist / Payroll / Compliance / AC
     manager_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
-    manager = db.relationship("User", remote_side=[id])
+    manager = db.relationship("User", remote_side=[id], foreign_keys=[manager_id])
+
+    # Only meaningful for Account Manager-role users (the Sales Rep field) -
+    # which AC-role user is this Account Manager's assigned AC. Not enforced
+    # at the DB level; conditionally shown/hidden in Manage Users via JS.
+    assigned_ac_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    assigned_ac = db.relationship("User", remote_side=[id], foreign_keys=[assigned_ac_id])
+
     invite_token = db.Column(db.String(64), nullable=True)
     reset_token = db.Column(db.String(64), nullable=True)
     reset_token_expires = db.Column(db.DateTime, nullable=True)
@@ -149,11 +217,44 @@ class User(UserMixin, db.Model):
     def is_admin(self):
         return self.role == "Admin"
 
+    def is_director(self):
+        return self.role == "Director"
+
+    # Kept for backward compatibility with any older callers checking for the
+    # scoped "Manager" role specifically (NOT the manager-tier permission set -
+    # that's now is_director()/is_manager_or_admin()).
     def is_manager(self):
         return self.role == "Manager"
 
     def is_manager_or_admin(self):
-        return self.role in ("Admin", "Manager")
+        """Manager-tier permission check (status changes, Confidential section,
+        Reporting/All Escalations tabs). Renamed conceptually to Director in
+        this batch, but the method name is kept so templates/call sites don't
+        need to change."""
+        return self.role in ("Admin", "Director")
+
+
+class MigrationFlag(db.Model):
+    """One-time-migration marker table. A row with a given key existing means
+    that migration has already run and must never run again - this is what
+    makes the boot-time Manager->Director rename (item 11a) safe to run on
+    every boot without re-renaming users who are legitimately given the NEW
+    scoped "Manager" role after the migration has already happened once."""
+    __tablename__ = "migration_flags"
+    key = db.Column(db.String(100), primary_key=True)
+    ran_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class Mention(db.Model):
+    """Tracks each time a user is @mentioned in a Discussion comment, so the
+    'My Mentions' tab can look these up directly instead of re-parsing comment
+    bodies. Populated at the same time parse_mentions() fires mention emails."""
+    __tablename__ = "mentions"
+    id = db.Column(db.Integer, primary_key=True)
+    escalation_id = db.Column(db.Integer, db.ForeignKey("escalations.id"), nullable=False)
+    comment_id = db.Column(db.Integer, db.ForeignKey("comments.id"), nullable=True)
+    mentioned_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
 class Escalation(db.Model):
@@ -170,7 +271,7 @@ class Escalation(db.Model):
     client = db.Column(db.String(255), nullable=True)  # deprecated field, kept for backward compatibility - no longer on the page layout
     facility = db.Column(db.String(255), nullable=False)
     assignment_url = db.Column(db.String(500), nullable=False)
-    discussed_with_manager = db.Column(db.String(10), nullable=False)
+    discussed_with_manager = db.Column(db.String(10), nullable=True)
     clinical_call_required = db.Column(db.String(10), nullable=True)
     status = db.Column(db.String(30), nullable=False, default="Open")
 
@@ -181,17 +282,33 @@ class Escalation(db.Model):
     sales_rep_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     sales_rep = db.relationship("User", foreign_keys=[sales_rep_id])
 
+    ac_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)  # auto-set from Sales Rep's assigned AC
+    ac = db.relationship("User", foreign_keys=[ac_id])
+
     compliance_specialist_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)  # not required for Clinical types
     compliance_specialist = db.relationship("User", foreign_keys=[compliance_specialist_id])
 
     recruiter_manager_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     recruiter_manager = db.relationship("User", foreign_keys=[recruiter_manager_id])
 
-    payroll_specialist_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)  # auto-set for Payroll & Timekeeping type
+    payroll_specialist_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)  # auto-set for Payroll & Timekeeping type (and Contract/Pay Changes)
     payroll_specialist = db.relationship("User", foreign_keys=[payroll_specialist_id])
+    payroll_specialist_assigned = db.Column(db.String(255), nullable=True)  # free-text: which person on the Payroll Team
 
     clinical_liaison_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)  # auto-set for Clinical types
     clinical_liaison = db.relationship("User", foreign_keys=[clinical_liaison_id])
+
+    # Compliance Manager (Compliance & Credentialing type) - auto-derived from
+    # the selected Compliance Specialist's manager. Dynamic, never hardcoded.
+    compliance_manager_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    compliance_manager = db.relationship("User", foreign_keys=[compliance_manager_id])
+
+    # Pre-Start type: a separate Compliance Specialist/Manager pair, distinct
+    # from the top-level Compliance Specialist field used by other types.
+    prestart_compliance_specialist_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    prestart_compliance_specialist = db.relationship("User", foreign_keys=[prestart_compliance_specialist_id])
+    prestart_compliance_manager_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    prestart_compliance_manager = db.relationship("User", foreign_keys=[prestart_compliance_manager_id])
 
     # --- Escalation Detail ---
     details = db.Column(db.Text, nullable=True)
@@ -204,14 +321,32 @@ class Escalation(db.Model):
     best_time_to_call = db.Column(db.String(30), nullable=True)
     time_zone = db.Column(db.String(40), nullable=True)
 
-    # --- Confidential Information (Manager/Admin only) ---
+    # Compliance & Credentialing type only
+    coast_deadline = db.Column(db.String(20), nullable=True)  # date string
+    facility_deadline = db.Column(db.String(20), nullable=True)  # date string
+    pushed_start = db.Column(db.Boolean, default=False)
+    pushed_start_notes = db.Column(db.Text, nullable=True)
+
+    # Payroll & Timekeeping type only
+    we_date = db.Column(db.String(20), nullable=True)  # date string
+    date_to_be_paid = db.Column(db.String(20), nullable=True)  # date string
+
+    # --- Confidential Information (Manager/Admin, i.e. Director/Admin, only) ---
     confidential_notes = db.Column(db.Text, nullable=True)
 
     # --- Resolution ---
-    complaint_outcome = db.Column(db.Text, nullable=True)
+    complaint_outcome = db.Column(db.Text, nullable=True)  # label renamed to "Escalation Outcome"; column kept as-is
     clinical_team_save = db.Column(db.Boolean, default=False)
     facility_resolution = db.Column(db.Text, nullable=True)
     is_traveler_canceled = db.Column(db.String(10), nullable=True)
+
+    # DNR fields - Clinical types only
+    dnr_facility = db.Column(db.Boolean, default=False)
+    dnr_facility_notes = db.Column(db.Text, nullable=True)
+    dnr_msp = db.Column(db.Boolean, default=False)
+    dnr_msp_notes = db.Column(db.Text, nullable=True)
+    dnr_hospital_system = db.Column(db.Boolean, default=False)
+    dnr_hospital_system_notes = db.Column(db.Text, nullable=True)
 
     comments = db.relationship("Comment", backref="escalation", cascade="all, delete-orphan", order_by="Comment.created_at")
     attachments = db.relationship("Attachment", backref="escalation", cascade="all, delete-orphan", order_by="Attachment.uploaded_at")
@@ -219,7 +354,14 @@ class Escalation(db.Model):
     def user_ids_involved(self):
         return {self.recruiter_id, self.sales_rep_id, self.compliance_specialist_id,
                 self.recruiter_manager_id, self.action_to_id,
-                self.payroll_specialist_id, self.clinical_liaison_id}
+                self.payroll_specialist_id, self.clinical_liaison_id, self.ac_id}
+
+    def closed_escalation_user_ids(self):
+        """The 5-field set used for 'My Closed Escalations' (item 9) - distinct
+        from user_ids_involved(), which is the broader 7-field set used by
+        My Open Escalations."""
+        return {self.recruiter_id, self.sales_rep_id, self.clinical_liaison_id,
+                self.compliance_specialist_id, self.payroll_specialist_id}
 
 
 class Comment(db.Model):

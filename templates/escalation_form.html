@@ -30,14 +30,14 @@
       <label>Assignment URL *</label>
       <input type="url" name="assignment_url" required>
     </div>
-    <div>
-      <label>Discussed with Coast Manager? *</label>
-      <select name="discussed_with_manager" required>
+    <div id="discussedWrapper">
+      <label>Discussed with Coast Manager?<span id="discussedRequiredMark"> *</span></label>
+      <select name="discussed_with_manager" id="discussedField" required>
         <option value="">-- Select --</option>
         {% for v in yes_no %}<option value="{{ v }}">{{ v }}</option>{% endfor %}
       </select>
     </div>
-    <div>
+    <div id="clinicalCallWrapper">
       <label>Clinical Call Required</label>
       <select name="clinical_call_required">
         <option value="">-- Select --</option>
@@ -57,9 +57,16 @@
     </div>
     <div>
       <label>Sales Rep *</label>
-      <select name="sales_rep_id" required>
+      <select name="sales_rep_id" id="salesRepField" required>
         <option value="">-- Select --</option>
         {% for u in sales_reps %}<option value="{{ u.id }}">{{ u.full_name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label>AC</label>
+      <select name="ac_id" id="acField">
+        <option value="">-- Auto-assigned from Sales Rep --</option>
+        {% for u in acs %}<option value="{{ u.id }}">{{ u.full_name }}</option>{% endfor %}
       </select>
     </div>
     <div id="complianceWrapper">
@@ -68,6 +75,10 @@
         <option value="">-- Select --</option>
         {% for u in compliance_specialists %}<option value="{{ u.id }}">{{ u.full_name }}</option>{% endfor %}
       </select>
+    </div>
+    <div id="complianceManagerWrapper" style="display:none;">
+      <label>Compliance Manager</label>
+      <input type="text" disabled placeholder="Auto-set from Compliance Specialist's manager on save">
     </div>
     <div>
       <label>Recruiter Manager</label>
@@ -79,6 +90,10 @@
         <option value="">-- Auto-assigned to Payroll Team --</option>
         {% for u in payroll_specialists %}<option value="{{ u.id }}">{{ u.full_name }}</option>{% endfor %}
       </select>
+    </div>
+    <div id="payrollSpecialistAssignedWrapper" style="display:none;">
+      <label>Payroll Specialist Assigned</label>
+      <input type="text" name="payroll_specialist_assigned" placeholder="Name of the person on the Payroll Team handling this">
     </div>
     <div id="clinicalLiaisonWrapper" style="display:none;">
       <label>Clinical Liaison</label>
@@ -103,7 +118,7 @@
         {% for u in all_users %}<option value="{{ u.id }}">{{ u.full_name }}{{ ' (Me)' if u.id==current_user.id }}</option>{% endfor %}
       </select>
     </div>
-    <div>
+    <div id="dangerWrapper">
       <label>Danger of Cancelling?</label>
       <select name="danger_of_cancelling">
         <option value="">-- Select --</option>
@@ -114,30 +129,93 @@
       <label>Action Item</label>
       <textarea name="action_item"></textarea>
     </div>
-    <div>
+    <div id="escalatedWrapper">
       <label><input type="checkbox" name="escalated_to_client" style="width:auto;"> Escalated to Client</label>
     </div>
-    <div>
+    <div id="bestDayWrapper">
       <label>Best Day to Call Traveler</label>
       <input type="date" name="best_day_to_call">
     </div>
-    <div>
+    <div id="bestTimeWrapper">
       <label>Best Time to Call Traveler</label>
       <select name="best_time_to_call">
         <option value="">-- Select --</option>
         {% for v in best_times %}<option value="{{ v }}">{{ v }}</option>{% endfor %}
       </select>
     </div>
-    <div>
+    <div id="timeZoneWrapper">
       <label>Time Zone</label>
       <select name="time_zone">
         <option value="">-- Select --</option>
         {% for v in time_zones %}<option value="{{ v }}">{{ v }}</option>{% endfor %}
       </select>
     </div>
+
+    <div id="coastDeadlineWrapper" style="display:none;">
+      <label>Coast Deadline<span> *</span></label>
+      <input type="date" name="coast_deadline" id="coastDeadlineField">
+    </div>
+    <div id="facilityDeadlineWrapper" style="display:none;">
+      <label>Facility Deadline<span> *</span></label>
+      <input type="date" name="facility_deadline" id="facilityDeadlineField">
+    </div>
+    <div id="pushedStartWrapper" style="display:none;">
+      <label><input type="checkbox" name="pushed_start" id="pushedStartCheck" style="width:auto;"> Pushed Start?</label>
+    </div>
+    <div id="pushedStartNotesWrapper" style="display:none;">
+      <label>Pushed Start Notes</label>
+      <textarea name="pushed_start_notes"></textarea>
+    </div>
+
+    <div id="weDateWrapper" style="display:none;">
+      <label>WE Date<span> *</span></label>
+      <input type="date" name="we_date" id="weDateField">
+    </div>
+    <div id="dateToBePaidWrapper" style="display:none;">
+      <label>Date to be paid</label>
+      <input type="date" name="date_to_be_paid">
+    </div>
+
+    <div id="prestartComplianceSpecialistWrapper" style="display:none;">
+      <label>Compliance Specialist</label>
+      <select name="prestart_compliance_specialist_id" id="prestartComplianceSpecialistField">
+        <option value="">-- Select --</option>
+        {% for u in compliance_specialists %}<option value="{{ u.id }}">{{ u.full_name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div id="prestartComplianceManagerWrapper" style="display:none;">
+      <label>Compliance Manager</label>
+      <input type="text" disabled placeholder="Auto-set from Compliance Specialist's manager on save">
+    </div>
+
     <div class="full">
       <label>Attach Documents</label>
       <input type="file" name="attachments" multiple>
+    </div>
+  </div>
+
+  <div class="section-header">Resolution</div>
+  <div class="form-grid">
+    <div id="dnrFacilityWrapper" style="display:none;">
+      <label><input type="checkbox" name="dnr_facility" id="dnrFacilityCheck" style="width:auto;"> DNR Facility</label>
+    </div>
+    <div id="dnrFacilityNotesWrapper" style="display:none;">
+      <label>DNR Facility Notes<span id="dnrFacilityRequiredMark"> *</span></label>
+      <textarea name="dnr_facility_notes"></textarea>
+    </div>
+    <div id="dnrMspWrapper" style="display:none;">
+      <label><input type="checkbox" name="dnr_msp" id="dnrMspCheck" style="width:auto;"> DNR MSP</label>
+    </div>
+    <div id="dnrMspNotesWrapper" style="display:none;">
+      <label>DNR MSP Notes<span id="dnrMspRequiredMark"> *</span></label>
+      <textarea name="dnr_msp_notes"></textarea>
+    </div>
+    <div id="dnrHospitalWrapper" style="display:none;">
+      <label><input type="checkbox" name="dnr_hospital_system" id="dnrHospitalCheck" style="width:auto;"> DNR Hospital System</label>
+    </div>
+    <div id="dnrHospitalNotesWrapper" style="display:none;">
+      <label>DNR Hospital System Notes<span id="dnrHospitalRequiredMark"> *</span></label>
+      <textarea name="dnr_hospital_system_notes"></textarea>
     </div>
   </div>
 
@@ -149,24 +227,66 @@
 <script>
 const SUBTYPES_BY_TYPE = {{ subtypes_by_type|tojson }};
 const CLINICAL_TYPES = {{ clinical_types|tojson }};
+const SALES_REP_AC_MAP = {{ sales_rep_ac_map|tojson }};
+const TYPE_COMPLIANCE = "Compliance & Credentialing";
+const TYPE_PAYROLL = "Payroll & Timekeeping";
+const TYPE_CONTRACT = "Contract";
+const TYPE_PRESTART = "Pre-Start";
+const REQUIRED_SUBTYPE_TYPES = [TYPE_COMPLIANCE, TYPE_PAYROLL, TYPE_CONTRACT];
+const DISCUSSED_NOT_REQUIRED_TYPES = [TYPE_COMPLIANCE, TYPE_PAYROLL];
+
 const typeField = document.getElementById('typeField');
 const subtypeWrapper = document.getElementById('subtypeWrapper');
 const subtypeField = document.getElementById('subtypeField');
 const complianceField = document.getElementById('complianceField');
 const complianceRequiredMark = document.getElementById('complianceRequiredMark');
 const complianceWrapper = document.getElementById('complianceWrapper');
+const complianceManagerWrapper = document.getElementById('complianceManagerWrapper');
 const payrollSpecialistWrapper = document.getElementById('payrollSpecialistWrapper');
+const payrollSpecialistAssignedWrapper = document.getElementById('payrollSpecialistAssignedWrapper');
 const clinicalLiaisonWrapper = document.getElementById('clinicalLiaisonWrapper');
+const discussedField = document.getElementById('discussedField');
+const discussedRequiredMark = document.getElementById('discussedRequiredMark');
+const clinicalCallWrapper = document.getElementById('clinicalCallWrapper');
+const dangerWrapper = document.getElementById('dangerWrapper');
+const escalatedWrapper = document.getElementById('escalatedWrapper');
+const bestDayWrapper = document.getElementById('bestDayWrapper');
+const bestTimeWrapper = document.getElementById('bestTimeWrapper');
+const timeZoneWrapper = document.getElementById('timeZoneWrapper');
+const coastDeadlineWrapper = document.getElementById('coastDeadlineWrapper');
+const coastDeadlineField = document.getElementById('coastDeadlineField');
+const facilityDeadlineWrapper = document.getElementById('facilityDeadlineWrapper');
+const facilityDeadlineField = document.getElementById('facilityDeadlineField');
+const pushedStartWrapper = document.getElementById('pushedStartWrapper');
+const pushedStartNotesWrapper = document.getElementById('pushedStartNotesWrapper');
+const weDateWrapper = document.getElementById('weDateWrapper');
+const weDateField = document.getElementById('weDateField');
+const dateToBePaidWrapper = document.getElementById('dateToBePaidWrapper');
+const prestartComplianceSpecialistWrapper = document.getElementById('prestartComplianceSpecialistWrapper');
+const prestartComplianceManagerWrapper = document.getElementById('prestartComplianceManagerWrapper');
+const dnrFacilityWrapper = document.getElementById('dnrFacilityWrapper');
+const dnrFacilityNotesWrapper = document.getElementById('dnrFacilityNotesWrapper');
+const dnrMspWrapper = document.getElementById('dnrMspWrapper');
+const dnrMspNotesWrapper = document.getElementById('dnrMspNotesWrapper');
+const dnrHospitalWrapper = document.getElementById('dnrHospitalWrapper');
+const dnrHospitalNotesWrapper = document.getElementById('dnrHospitalNotesWrapper');
+const salesRepField = document.getElementById('salesRepField');
+const acField = document.getElementById('acField');
 
 function syncSubtype() {
   const type = typeField.value;
   const isClinical = CLINICAL_TYPES.includes(type);
-  const isPayroll = type === 'Payroll & Timekeeping';
+  const isCompliance = type === TYPE_COMPLIANCE;
+  const isPayroll = type === TYPE_PAYROLL;
+  const isPrestart = type === TYPE_PRESTART;
+  const subtypeRequired = isClinical || REQUIRED_SUBTYPE_TYPES.includes(type);
+  const payrollApplicable = isPayroll || (type === TYPE_CONTRACT && subtypeField.value === 'Pay Changes');
 
-  if (isClinical) {
+  if (subtypeRequired) {
     subtypeWrapper.style.display = '';
     subtypeField.required = true;
     const options = SUBTYPES_BY_TYPE[type] || [];
+    subtypeWrapper.style.display = options.length ? '' : (isClinical ? '' : 'none');
     subtypeField.innerHTML = '<option value="">-- Select --</option>' + options.map(o => `<option value="${o}">${o}</option>`).join('');
   } else {
     subtypeWrapper.style.display = 'none';
@@ -175,25 +295,92 @@ function syncSubtype() {
   }
 
   // Compliance Specialist is removed from the page entirely for Clinical types
-  // (not needed/involved), and not required (but still shown) for Payroll & Timekeeping.
-  if (isClinical) {
+  // and Payroll & Timekeeping (item 4e); not required (but shown) otherwise.
+  const complianceHidden = isClinical || isPayroll;
+  if (complianceHidden) {
     complianceWrapper.style.display = 'none';
     complianceField.required = false;
     complianceField.value = '';
   } else {
     complianceWrapper.style.display = '';
-    complianceField.required = !isPayroll;
-    complianceRequiredMark.style.display = isPayroll ? 'none' : '';
+    complianceField.required = true;
+    complianceRequiredMark.style.display = '';
   }
+  complianceManagerWrapper.style.display = isCompliance ? '' : 'none';
 
-  // Payroll Specialist field only shown for Payroll & Timekeeping (never required)
-  payrollSpecialistWrapper.style.display = isPayroll ? '' : 'none';
+  // Payroll Specialist section (dropdown + free-text Assigned box) - item 7c
+  payrollSpecialistWrapper.style.display = payrollApplicable ? '' : 'none';
+  payrollSpecialistAssignedWrapper.style.display = payrollApplicable ? '' : 'none';
 
   // Clinical Liaison field only shown for Clinical types
   clinicalLiaisonWrapper.style.display = isClinical ? '' : 'none';
+
+  // Discussed with Coast Manager - not required for Compliance & Credentialing / Payroll & Timekeeping
+  const discussedRequired = !DISCUSSED_NOT_REQUIRED_TYPES.includes(type);
+  discussedField.required = discussedRequired;
+  discussedRequiredMark.style.display = discussedRequired ? '' : 'none';
+
+  // Fields hidden entirely for Compliance & Credentialing (item 2c)
+  clinicalCallWrapper.style.display = isCompliance ? 'none' : '';
+  dangerWrapper.style.display = isCompliance ? 'none' : '';
+  escalatedWrapper.style.display = isCompliance ? 'none' : '';
+  bestDayWrapper.style.display = (isCompliance || isPayroll) ? 'none' : '';
+  bestTimeWrapper.style.display = (isCompliance || isPayroll) ? 'none' : '';
+  timeZoneWrapper.style.display = (isCompliance || isPayroll) ? 'none' : '';
+  // Additionally hidden entirely for Payroll & Timekeeping (item 4e)
+  if (isPayroll) clinicalCallWrapper.style.display = 'none';
+
+  // Compliance & Credentialing detail fields (item 2e)
+  coastDeadlineWrapper.style.display = isCompliance ? '' : 'none';
+  coastDeadlineField.required = isCompliance;
+  facilityDeadlineWrapper.style.display = isCompliance ? '' : 'none';
+  facilityDeadlineField.required = isCompliance;
+  pushedStartWrapper.style.display = isCompliance ? '' : 'none';
+  pushedStartNotesWrapper.style.display = isCompliance ? '' : 'none';
+
+  // Payroll & Timekeeping detail fields (item 4c)
+  weDateWrapper.style.display = isPayroll ? '' : 'none';
+  weDateField.required = isPayroll;
+  dateToBePaidWrapper.style.display = isPayroll ? '' : 'none';
+
+  // Pre-Start fields (item 6b)
+  prestartComplianceSpecialistWrapper.style.display = isPrestart ? '' : 'none';
+  prestartComplianceManagerWrapper.style.display = isPrestart ? '' : 'none';
+
+  // DNR fields (item 1) - Clinical types only; the *_notes wrapper additionally
+  // depends on whether its checkbox is currently checked (handled in syncDnrVisibility).
+  [dnrFacilityWrapper, dnrMspWrapper, dnrHospitalWrapper].forEach(w => {
+    w.style.display = isClinical ? '' : 'none';
+  });
+  syncDnrVisibility(isClinical);
+}
+
+function syncDnrVisibility(isClinical) {
+  const pairs = [
+    [document.getElementById('dnrFacilityCheck'), dnrFacilityNotesWrapper, document.getElementById('dnrFacilityRequiredMark')],
+    [document.getElementById('dnrMspCheck'), dnrMspNotesWrapper, document.getElementById('dnrMspRequiredMark')],
+    [document.getElementById('dnrHospitalCheck'), dnrHospitalNotesWrapper, document.getElementById('dnrHospitalRequiredMark')],
+  ];
+  pairs.forEach(([check, notesWrapper, mark]) => {
+    const show = isClinical && check.checked;
+    notesWrapper.style.display = show ? '' : 'none';
+    if (mark) mark.style.display = show ? '' : 'none';
+  });
 }
 typeField.addEventListener('change', syncSubtype);
+subtypeField.addEventListener('change', syncSubtype);
 syncSubtype();
+
+// Sales Rep -> ACs field (item 10c): auto-fill AC live from a JSON map, client-side
+salesRepField.addEventListener('change', function() {
+  const acId = SALES_REP_AC_MAP[salesRepField.value];
+  acField.value = acId ? String(acId) : '';
+});
+
+// DNR checkbox -> conditionally-required notes field (item 1)
+['dnrFacilityCheck', 'dnrMspCheck', 'dnrHospitalCheck'].forEach(id => {
+  document.getElementById(id).addEventListener('change', () => syncDnrVisibility(CLINICAL_TYPES.includes(typeField.value)));
+});
 
 // --- Rich text editor (contenteditable) sync for Details/What Happened ---
 // Bullet lists and paragraph breaks pasted from Word/Docs/etc. are preserved

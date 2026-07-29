@@ -14,15 +14,13 @@
           <select name="type" id="typeField">
             {% for t in types %}<option value="{{ t }}" {{ 'selected' if esc.type==t }}>{{ t }}</option>{% endfor %}
           </select>
-          <div id="subtypeWrapper" style="margin-top:10px; {{ '' if esc.type in clinical_types else 'display:none;' }}">
+          <div id="subtypeWrapper" style="margin-top:10px;">
             <label>Subtype</label>
             <select name="subtype" id="subtypeField">
               <option value="">-- Select --</option>
-              {% if esc.type in clinical_types %}
-                {% for s in subtypes_by_type.get(esc.type, []) %}
-                  <option value="{{ s }}" {{ 'selected' if esc.subtype==s }}>{{ s }}</option>
-                {% endfor %}
-              {% endif %}
+              {% for s in subtypes_by_type.get(esc.type, []) %}
+                <option value="{{ s }}" {{ 'selected' if esc.subtype==s }}>{{ s }}</option>
+              {% endfor %}
             </select>
           </div>
         </div>
@@ -32,17 +30,21 @@
             {% for s in statuses %}<option value="{{ s }}" {{ 'selected' if esc.status==s }}>{{ s }}</option>{% endfor %}
           </select>
           {% if not can_manage %}<p style="font-size:12px;color:var(--brand-gray);margin:4px 0 0;">Only Managers/Admins can change Status.</p>{% endif %}
+          {% if esc.status not in status_values_by_type.get(esc.type, all_statuses) %}
+          <p style="font-size:12px;color:var(--brand-gray);margin:4px 0 0;">This record's current Status is a legacy value for this Type. It will keep displaying/saving fine as long as you don't change it.</p>
+          {% endif %}
         </div>
         <div><label>Candidate</label><input type="text" name="candidate" value="{{ esc.candidate }}"></div>
         <div><label>Facility</label><input type="text" name="facility" value="{{ esc.facility }}"></div>
         <div class="full"><label>Assignment URL</label><input type="url" name="assignment_url" value="{{ esc.assignment_url }}"></div>
-        <div>
-          <label>Discussed with Coast Manager?</label>
-          <select name="discussed_with_manager">
+        <div id="discussedWrapper">
+          <label>Discussed with Coast Manager?<span id="discussedRequiredMark"> *</span></label>
+          <select name="discussed_with_manager" id="discussedField">
+            <option value="">-- None --</option>
             {% for v in yes_no %}<option value="{{ v }}" {{ 'selected' if esc.discussed_with_manager==v }}>{{ v }}</option>{% endfor %}
           </select>
         </div>
-        <div>
+        <div id="clinicalCallWrapper">
           <label>Clinical Call Required</label>
           <select name="clinical_call_required">
             <option value="">-- None --</option>
@@ -61,28 +63,44 @@
         </div>
         <div>
           <label>Sales Rep</label>
-          <select name="sales_rep_id">
+          <select name="sales_rep_id" id="salesRepField">
             {% for u in sales_reps %}<option value="{{ u.id }}" {{ 'selected' if esc.sales_rep_id==u.id }}>{{ u.full_name }}</option>{% endfor %}
           </select>
         </div>
-        <div id="complianceWrapper" style="{{ 'display:none;' if esc.type in clinical_types else '' }}">
+        <div>
+          <label>AC</label>
+          <select name="ac_id" id="acField">
+            <option value="">-- Auto-assigned from Sales Rep --</option>
+            {% for u in acs %}<option value="{{ u.id }}" {{ 'selected' if esc.ac_id==u.id }}>{{ u.full_name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div id="complianceWrapper">
           <label>Compliance Specialist</label>
           <select name="compliance_specialist_id" id="complianceField">
+            <option value="">-- None --</option>
             {% for u in compliance_specialists %}<option value="{{ u.id }}" {{ 'selected' if esc.compliance_specialist_id==u.id }}>{{ u.full_name }}</option>{% endfor %}
           </select>
+        </div>
+        <div id="complianceManagerWrapper">
+          <label>Compliance Manager</label>
+          <input type="text" disabled value="{{ esc.compliance_manager.full_name if esc.compliance_manager else '-' }}">
         </div>
         <div>
           <label>Recruiter Manager</label>
           <input type="text" disabled value="{{ esc.recruiter_manager.full_name if esc.recruiter_manager else '-' }}">
         </div>
-        <div id="payrollSpecialistWrapper" style="{{ '' if esc.type == 'Payroll & Timekeeping' else 'display:none;' }}">
+        <div id="payrollSpecialistWrapper">
           <label>Payroll Specialist</label>
           <select name="payroll_specialist_id" id="payrollSpecialistField">
             <option value="">-- Auto-assigned to Payroll Team --</option>
             {% for u in payroll_specialists %}<option value="{{ u.id }}" {{ 'selected' if esc.payroll_specialist_id==u.id }}>{{ u.full_name }}</option>{% endfor %}
           </select>
         </div>
-        <div id="clinicalLiaisonWrapper" style="{{ '' if esc.type in clinical_types else 'display:none;' }}">
+        <div id="payrollSpecialistAssignedWrapper">
+          <label>Payroll Specialist Assigned</label>
+          <input type="text" name="payroll_specialist_assigned" value="{{ esc.payroll_specialist_assigned or '' }}" placeholder="Name of the person on the Payroll Team handling this">
+        </div>
+        <div id="clinicalLiaisonWrapper">
           <label>Clinical Liaison</label>
           <select name="clinical_liaison_id" id="clinicalLiaisonField">
             <option value="">-- Auto-assigned to Lauren Redig --</option>
@@ -105,7 +123,7 @@
             {% for u in all_users %}<option value="{{ u.id }}" {{ 'selected' if esc.action_to_id==u.id }}>{{ u.full_name }}</option>{% endfor %}
           </select>
         </div>
-        <div>
+        <div id="dangerWrapper">
           <label>Danger of Cancelling?</label>
           <select name="danger_of_cancelling">
             <option value="">-- None --</option>
@@ -113,22 +131,60 @@
           </select>
         </div>
         <div class="full"><label>Action Item</label><textarea name="action_item">{{ esc.action_item or '' }}</textarea></div>
-        <div><label><input type="checkbox" name="escalated_to_client" style="width:auto;" {{ 'checked' if esc.escalated_to_client }}> Escalated to Client</label></div>
-        <div><label>Best Day to Call Traveler</label><input type="date" name="best_day_to_call" value="{{ esc.best_day_to_call or '' }}"></div>
-        <div>
+        <div id="escalatedWrapper"><label><input type="checkbox" name="escalated_to_client" style="width:auto;" {{ 'checked' if esc.escalated_to_client }}> Escalated to Client</label></div>
+        <div id="bestDayWrapper"><label>Best Day to Call Traveler</label><input type="date" name="best_day_to_call" value="{{ esc.best_day_to_call or '' }}"></div>
+        <div id="bestTimeWrapper">
           <label>Best Time to Call Traveler</label>
           <select name="best_time_to_call">
             <option value="">-- None --</option>
             {% for v in best_times %}<option value="{{ v }}" {{ 'selected' if esc.best_time_to_call==v }}>{{ v }}</option>{% endfor %}
           </select>
         </div>
-        <div>
+        <div id="timeZoneWrapper">
           <label>Time Zone</label>
           <select name="time_zone">
             <option value="">-- None --</option>
             {% for v in time_zones %}<option value="{{ v }}" {{ 'selected' if esc.time_zone==v }}>{{ v }}</option>{% endfor %}
           </select>
         </div>
+
+        <div id="coastDeadlineWrapper">
+          <label>Coast Deadline<span> *</span></label>
+          <input type="date" name="coast_deadline" id="coastDeadlineField" value="{{ esc.coast_deadline or '' }}">
+        </div>
+        <div id="facilityDeadlineWrapper">
+          <label>Facility Deadline<span> *</span></label>
+          <input type="date" name="facility_deadline" id="facilityDeadlineField" value="{{ esc.facility_deadline or '' }}">
+        </div>
+        <div id="pushedStartWrapper">
+          <label><input type="checkbox" name="pushed_start" id="pushedStartCheck" style="width:auto;" {{ 'checked' if esc.pushed_start }}> Pushed Start?</label>
+        </div>
+        <div id="pushedStartNotesWrapper">
+          <label>Pushed Start Notes</label>
+          <textarea name="pushed_start_notes">{{ esc.pushed_start_notes or '' }}</textarea>
+        </div>
+
+        <div id="weDateWrapper">
+          <label>WE Date<span> *</span></label>
+          <input type="date" name="we_date" id="weDateField" value="{{ esc.we_date or '' }}">
+        </div>
+        <div id="dateToBePaidWrapper">
+          <label>Date to be paid</label>
+          <input type="date" name="date_to_be_paid" value="{{ esc.date_to_be_paid or '' }}">
+        </div>
+
+        <div id="prestartComplianceSpecialistWrapper">
+          <label>Compliance Specialist</label>
+          <select name="prestart_compliance_specialist_id" id="prestartComplianceSpecialistField">
+            <option value="">-- Select --</option>
+            {% for u in compliance_specialists %}<option value="{{ u.id }}" {{ 'selected' if esc.prestart_compliance_specialist_id==u.id }}>{{ u.full_name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div id="prestartComplianceManagerWrapper">
+          <label>Compliance Manager</label>
+          <input type="text" disabled value="{{ esc.prestart_compliance_manager.full_name if esc.prestart_compliance_manager else '-' }}">
+        </div>
+
         <div class="full">
           <label>Attachments</label>
           {% for a in esc.attachments if not a.is_confidential %}
@@ -160,7 +216,7 @@
 
       <div class="section-header">Resolution</div>
       <div class="form-grid">
-        <div class="full"><label>Complaint Outcome</label><textarea name="complaint_outcome">{{ esc.complaint_outcome or '' }}</textarea></div>
+        <div class="full"><label>Escalation Outcome</label><textarea name="complaint_outcome">{{ esc.complaint_outcome or '' }}</textarea></div>
         <div><label><input type="checkbox" name="clinical_team_save" style="width:auto;" {{ 'checked' if esc.clinical_team_save }}> Clinical Team Save</label></div>
         <div class="full"><label>Facility Resolution</label><textarea name="facility_resolution">{{ esc.facility_resolution or '' }}</textarea></div>
         <div>
@@ -169,6 +225,28 @@
             <option value="">-- None --</option>
             {% for v in yes_no %}<option value="{{ v }}" {{ 'selected' if esc.is_traveler_canceled==v }}>{{ v }}</option>{% endfor %}
           </select>
+        </div>
+
+        <div id="dnrFacilityWrapper">
+          <label><input type="checkbox" name="dnr_facility" id="dnrFacilityCheck" style="width:auto;" {{ 'checked' if esc.dnr_facility }}> DNR Facility</label>
+        </div>
+        <div id="dnrFacilityNotesWrapper">
+          <label>DNR Facility Notes<span id="dnrFacilityRequiredMark"> *</span></label>
+          <textarea name="dnr_facility_notes">{{ esc.dnr_facility_notes or '' }}</textarea>
+        </div>
+        <div id="dnrMspWrapper">
+          <label><input type="checkbox" name="dnr_msp" id="dnrMspCheck" style="width:auto;" {{ 'checked' if esc.dnr_msp }}> DNR MSP</label>
+        </div>
+        <div id="dnrMspNotesWrapper">
+          <label>DNR MSP Notes<span id="dnrMspRequiredMark"> *</span></label>
+          <textarea name="dnr_msp_notes">{{ esc.dnr_msp_notes or '' }}</textarea>
+        </div>
+        <div id="dnrHospitalWrapper">
+          <label><input type="checkbox" name="dnr_hospital_system" id="dnrHospitalCheck" style="width:auto;" {{ 'checked' if esc.dnr_hospital_system }}> DNR Hospital System</label>
+        </div>
+        <div id="dnrHospitalNotesWrapper">
+          <label>DNR Hospital System Notes<span id="dnrHospitalRequiredMark"> *</span></label>
+          <textarea name="dnr_hospital_system_notes">{{ esc.dnr_hospital_system_notes or '' }}</textarea>
         </div>
       </div>
 
@@ -209,20 +287,62 @@
 const SUBTYPES_BY_TYPE = {{ subtypes_by_type|tojson }};
 const CLINICAL_TYPES = {{ clinical_types|tojson }};
 const CURRENT_SUBTYPE = {{ (esc.subtype or "")|tojson }};
+const SALES_REP_AC_MAP = {{ sales_rep_ac_map|tojson }};
+const STATUS_VALUES_BY_TYPE = {{ status_values_by_type|tojson }};
+const ALL_STATUSES = {{ all_statuses|tojson }};
+const CURRENT_STATUS = {{ (esc.status or "")|tojson }};
+const TYPE_COMPLIANCE = "Compliance & Credentialing";
+const TYPE_PAYROLL = "Payroll & Timekeeping";
+const TYPE_CONTRACT = "Contract";
+const TYPE_PRESTART = "Pre-Start";
+const REQUIRED_SUBTYPE_TYPES = [TYPE_COMPLIANCE, TYPE_PAYROLL, TYPE_CONTRACT];
+const DISCUSSED_NOT_REQUIRED_TYPES = [TYPE_COMPLIANCE, TYPE_PAYROLL];
+
 const typeField = document.getElementById('typeField');
 const subtypeWrapper = document.getElementById('subtypeWrapper');
 const subtypeField = document.getElementById('subtypeField');
 const payrollSpecialistWrapper = document.getElementById('payrollSpecialistWrapper');
+const payrollSpecialistAssignedWrapper = document.getElementById('payrollSpecialistAssignedWrapper');
 const clinicalLiaisonWrapper = document.getElementById('clinicalLiaisonWrapper');
 const complianceWrapper = document.getElementById('complianceWrapper');
 const complianceField = document.getElementById('complianceField');
+const complianceManagerWrapper = document.getElementById('complianceManagerWrapper');
+const discussedField = document.getElementById('discussedField');
+const discussedRequiredMark = document.getElementById('discussedRequiredMark');
+const clinicalCallWrapper = document.getElementById('clinicalCallWrapper');
+const dangerWrapper = document.getElementById('dangerWrapper');
+const escalatedWrapper = document.getElementById('escalatedWrapper');
+const bestDayWrapper = document.getElementById('bestDayWrapper');
+const bestTimeWrapper = document.getElementById('bestTimeWrapper');
+const timeZoneWrapper = document.getElementById('timeZoneWrapper');
+const coastDeadlineWrapper = document.getElementById('coastDeadlineWrapper');
+const facilityDeadlineWrapper = document.getElementById('facilityDeadlineWrapper');
+const pushedStartWrapper = document.getElementById('pushedStartWrapper');
+const pushedStartNotesWrapper = document.getElementById('pushedStartNotesWrapper');
+const weDateWrapper = document.getElementById('weDateWrapper');
+const dateToBePaidWrapper = document.getElementById('dateToBePaidWrapper');
+const prestartComplianceSpecialistWrapper = document.getElementById('prestartComplianceSpecialistWrapper');
+const prestartComplianceManagerWrapper = document.getElementById('prestartComplianceManagerWrapper');
+const dnrFacilityWrapper = document.getElementById('dnrFacilityWrapper');
+const dnrFacilityNotesWrapper = document.getElementById('dnrFacilityNotesWrapper');
+const dnrMspWrapper = document.getElementById('dnrMspWrapper');
+const dnrMspNotesWrapper = document.getElementById('dnrMspNotesWrapper');
+const dnrHospitalWrapper = document.getElementById('dnrHospitalWrapper');
+const dnrHospitalNotesWrapper = document.getElementById('dnrHospitalNotesWrapper');
+const salesRepField = document.getElementById('salesRepField');
+const acField = document.getElementById('acField');
+const statusSelect = document.getElementById('statusSelect');
 
 function syncSubtype(preserveCurrent) {
   const type = typeField.value;
   const isClinical = CLINICAL_TYPES.includes(type);
-  const isPayroll = type === 'Payroll & Timekeeping';
+  const isCompliance = type === TYPE_COMPLIANCE;
+  const isPayroll = type === TYPE_PAYROLL;
+  const isPrestart = type === TYPE_PRESTART;
+  const subtypeRequired = isClinical || REQUIRED_SUBTYPE_TYPES.includes(type);
+  const payrollApplicable = isPayroll || (type === TYPE_CONTRACT && subtypeField.value === 'Pay Changes');
 
-  if (isClinical) {
+  if (subtypeRequired) {
     subtypeWrapper.style.display = '';
     const options = SUBTYPES_BY_TYPE[type] || [];
     subtypeField.innerHTML = '<option value="">-- Select --</option>' + options.map(o => {
@@ -234,21 +354,89 @@ function syncSubtype(preserveCurrent) {
     subtypeField.innerHTML = '';
   }
 
-  if (payrollSpecialistWrapper) payrollSpecialistWrapper.style.display = isPayroll ? '' : 'none';
-  if (clinicalLiaisonWrapper) clinicalLiaisonWrapper.style.display = isClinical ? '' : 'none';
-
-  // Compliance Specialist is removed from the page entirely for Clinical types.
-  if (complianceWrapper) {
-    if (isClinical) {
-      complianceWrapper.style.display = 'none';
-      if (complianceField) complianceField.value = '';
-    } else {
-      complianceWrapper.style.display = '';
-    }
+  const complianceHidden = isClinical || isPayroll;
+  if (complianceHidden) {
+    complianceWrapper.style.display = 'none';
+    if (complianceField) complianceField.value = '';
+  } else {
+    complianceWrapper.style.display = '';
   }
+  complianceManagerWrapper.style.display = isCompliance ? '' : 'none';
+
+  payrollSpecialistWrapper.style.display = payrollApplicable ? '' : 'none';
+  payrollSpecialistAssignedWrapper.style.display = payrollApplicable ? '' : 'none';
+  clinicalLiaisonWrapper.style.display = isClinical ? '' : 'none';
+
+  const discussedRequired = !DISCUSSED_NOT_REQUIRED_TYPES.includes(type);
+  discussedRequiredMark.style.display = discussedRequired ? '' : 'none';
+
+  clinicalCallWrapper.style.display = (isCompliance || isPayroll) ? 'none' : '';
+  dangerWrapper.style.display = isCompliance ? 'none' : '';
+  escalatedWrapper.style.display = isCompliance ? 'none' : '';
+  bestDayWrapper.style.display = (isCompliance || isPayroll) ? 'none' : '';
+  bestTimeWrapper.style.display = (isCompliance || isPayroll) ? 'none' : '';
+  timeZoneWrapper.style.display = (isCompliance || isPayroll) ? 'none' : '';
+
+  coastDeadlineWrapper.style.display = isCompliance ? '' : 'none';
+  facilityDeadlineWrapper.style.display = isCompliance ? '' : 'none';
+  pushedStartWrapper.style.display = isCompliance ? '' : 'none';
+  pushedStartNotesWrapper.style.display = isCompliance ? '' : 'none';
+
+  weDateWrapper.style.display = isPayroll ? '' : 'none';
+  dateToBePaidWrapper.style.display = isPayroll ? '' : 'none';
+
+  prestartComplianceSpecialistWrapper.style.display = isPrestart ? '' : 'none';
+  prestartComplianceManagerWrapper.style.display = isPrestart ? '' : 'none';
+
+  [dnrFacilityWrapper, dnrMspWrapper, dnrHospitalWrapper].forEach(w => {
+    w.style.display = isClinical ? '' : 'none';
+  });
+  syncDnrVisibility(isClinical);
+
+  syncStatusOptions(type, preserveCurrent);
 }
+
+function syncDnrVisibility(isClinical) {
+  const pairs = [
+    [document.getElementById('dnrFacilityCheck'), dnrFacilityNotesWrapper, document.getElementById('dnrFacilityRequiredMark')],
+    [document.getElementById('dnrMspCheck'), dnrMspNotesWrapper, document.getElementById('dnrMspRequiredMark')],
+    [document.getElementById('dnrHospitalCheck'), dnrHospitalNotesWrapper, document.getElementById('dnrHospitalRequiredMark')],
+  ];
+  pairs.forEach(([check, notesWrapper, mark]) => {
+    const show = isClinical && check.checked;
+    notesWrapper.style.display = show ? '' : 'none';
+    if (mark) mark.style.display = show ? '' : 'none';
+  });
+}
+
+// Items 2f/4d: restrict the Status dropdown's options to the selected Type's
+// allowed list, always keeping the record's current stored value selectable
+// too (even if out-of-range for the new type) so legacy data isn't lost/blocked.
+function syncStatusOptions(type, preserveCurrent) {
+  if (!statusSelect) return;
+  const allowed = STATUS_VALUES_BY_TYPE[type] || ALL_STATUSES;
+  const priorValue = statusSelect.value || CURRENT_STATUS;
+  let options = allowed.slice();
+  if (priorValue && !options.includes(priorValue)) options.push(priorValue);
+  statusSelect.innerHTML = options.map(s => {
+    const sel = (s === priorValue) ? ' selected' : '';
+    return `<option value="${s}"${sel}>${s}</option>`;
+  }).join('');
+}
+
+['dnrFacilityCheck', 'dnrMspCheck', 'dnrHospitalCheck'].forEach(id => {
+  document.getElementById(id).addEventListener('change', () => syncDnrVisibility(CLINICAL_TYPES.includes(typeField.value)));
+});
+
 typeField.addEventListener('change', () => syncSubtype(false));
+subtypeField.addEventListener('change', () => syncSubtype(true));
 syncSubtype(true);
+
+// Sales Rep -> AC field (item 10c)
+salesRepField.addEventListener('change', function() {
+  const acId = SALES_REP_AC_MAP[salesRepField.value];
+  acField.value = acId ? String(acId) : '';
+});
 
 // Convert comment timestamps to the viewer's own browser-local time zone
 document.querySelectorAll('.comment-time').forEach(el => {

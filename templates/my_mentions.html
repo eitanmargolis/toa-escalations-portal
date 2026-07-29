@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% import "_status_badge.html" as b %}
+{% block title %}My Mentions{% endblock %}
+{% block content %}
+<h1>My Mentions</h1>
+<p style="color:#6b7a86;">Escalations where you have been @mentioned at least once in the Discussion.</p>
+<div class="card">
+  <table>
+    <thead><tr><th>ID</th><th>Candidate</th><th>Facility</th><th>Type</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for e in escalations %}
+      <tr onclick="window.location='{{ url_for('view_escalation', escalation_id=e.id) }}'" style="cursor:pointer;">
+        <td>#{{ e.id }}</td>
+        <td>{{ e.candidate }}</td>
+        <td>{{ e.facility }}</td>
+        <td>{{ e.type }}</td>
+        <td>{{ b.status_badge(e.status) }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" style="color:#6b7a86;">You haven't been mentioned in any escalations yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -6,7 +6,9 @@
     'Clinical Call Complete': 'status-blue',
     'Needs Follow Up': 'status-yellow',
     'Closed - Resolved': 'status-red',
-    'Closed - Canceled': 'status-red'
+    'Closed - Canceled': 'status-red',
+    'Investigating': 'status-yellow',
+    'Information Needed': 'status-yellow'
   } %}
   <span class="badge {{ cls.get(status, 'status-green') }}">{{ status }}</span>
 {% endmacro %}

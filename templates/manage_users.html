@@ -12,13 +12,20 @@
     <div><label>Email</label><input type="email" name="email" required></div>
     <div>
       <label>Role</label>
-      <select name="role">{% for r in roles %}<option value="{{ r }}">{{ r }}</option>{% endfor %}</select>
+      <select name="role" id="createRoleField">{% for r in roles %}<option value="{{ r }}">{{ r }}</option>{% endfor %}</select>
     </div>
-    <div class="full">
+    <div id="createManagerWrapper">
       <label>Manager</label>
       <select name="manager_id">
         <option value="">-- None --</option>
         {% for u in users %}<option value="{{ u.id }}">{{ u.full_name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div id="createAcWrapper" style="display:none;">
+      <label>AC</label>
+      <select name="assigned_ac_id">
+        <option value="">-- None --</option>
+        {% for u in acs %}<option value="{{ u.id }}">{{ u.full_name }}</option>{% endfor %}
       </select>
     </div>
     <div class="full"><button class="btn" type="submit">Create User</button></div>
@@ -32,12 +39,12 @@
     <tbody>
       {% for u in users %}
       <tr>
-        <form method="post" action="{{ url_for('edit_user', user_id=u.id) }}">
+        <form method="post" action="{{ url_for('edit_user', user_id=u.id) }}" class="edit-user-row">
         <td><input type="text" name="first_name" value="{{ u.first_name }}"></td>
         <td><input type="text" name="last_name" value="{{ u.last_name }}"></td>
         <td><input type="email" name="email" value="{{ u.email }}"></td>
         <td>
-          <select name="role">
+          <select name="role" class="edit-role-field">
             {% for r in roles %}<option value="{{ r }}" {{ 'selected' if u.role==r }}>{{ r }}</option>{% endfor %}
           </select>
         </td>
@@ -46,6 +53,13 @@
             <option value="">-- None --</option>
             {% for m in users %}{% if m.id != u.id %}<option value="{{ m.id }}" {{ 'selected' if u.manager_id==m.id }}>{{ m.full_name }}</option>{% endif %}{% endfor %}
           </select>
+          <span class="edit-ac-wrapper" style="{{ '' if u.role=='Account Manager' else 'display:none;' }}">
+            <label style="font-size:11px;color:var(--brand-gray);display:block;margin-top:4px;">AC</label>
+            <select name="assigned_ac_id">
+              <option value="">-- None --</option>
+              {% for a in acs %}<option value="{{ a.id }}" {{ 'selected' if u.assigned_ac_id==a.id }}>{{ a.full_name }}</option>{% endfor %}
+            </select>
+          </span>
         </td>
         <td>
           <button class="btn" type="submit">Save</button>
@@ -59,4 +73,25 @@
     </tbody>
   </table>
 </div>
+
+<script>
+// Item 10b: show the "AC" field next to Manager only when Role = Account Manager
+const createRoleField = document.getElementById('createRoleField');
+const createAcWrapper = document.getElementById('createAcWrapper');
+function syncCreateAc() {
+  createAcWrapper.style.display = createRoleField.value === 'Account Manager' ? '' : 'none';
+}
+createRoleField.addEventListener('change', syncCreateAc);
+syncCreateAc();
+
+document.querySelectorAll('.edit-user-row').forEach(row => {
+  const roleField = row.querySelector('.edit-role-field');
+  const acWrapper = row.closest('tr').querySelector('.edit-ac-wrapper');
+  function sync() {
+    acWrapper.style.display = roleField.value === 'Account Manager' ? '' : 'none';
+  }
+  roleField.addEventListener('change', sync);
+  sync();
+});
+</script>
 {% endblock %}
