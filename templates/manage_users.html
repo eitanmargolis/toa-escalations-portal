@@ -35,7 +35,7 @@
 <div class="card">
   <h2 style="margin-top:0;">Existing Users</h2>
   <table>
-    <thead><tr><th>First Name</th><th>Last Name</th><th>Email</th><th>Role</th><th>Manager</th><th></th></tr></thead>
+    <thead><tr><th>First Name</th><th>Last Name</th><th>Email</th><th>Role</th><th>Manager</th><th style="min-width:160px;"></th></tr></thead>
     <tbody>
       {% for u in users %}
       <tr>
@@ -64,6 +64,11 @@
         <td>
           <button class="btn" type="submit">Save</button>
         </form>
+        {% if u.id != current_user.id %}
+        <form method="post" action="{{ url_for('impersonate_user', user_id=u.id) }}" style="display:inline;">
+          <button class="btn btn-secondary" type="submit">Log In As</button>
+        </form>
+        {% endif %}
         <form method="post" action="{{ url_for('delete_user', user_id=u.id) }}" style="display:inline;" onsubmit="return confirm('Delete this user?');">
           <button class="btn btn-secondary" type="submit">Delete</button>
         </form>

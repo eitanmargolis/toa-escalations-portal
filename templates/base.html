@@ -31,6 +31,14 @@
     {% endif %}
   </div>
   {% endif %}
+  {% if session.get('impersonator_id') %}
+  <div style="background:#fff3cd; color:#664d03; padding:10px 20px; display:flex; align-items:center; gap:12px; font-size:14px;">
+    <span>You are viewing the portal as <b>{{ current_user.full_name }}</b> ({{ current_user.role }}) &mdash; logged in by an Admin.</span>
+    <form method="post" action="{{ url_for('stop_impersonating') }}" style="margin:0;">
+      <button class="btn" type="submit" style="padding:4px 12px; font-size:13px;">Return to Admin</button>
+    </form>
+  </div>
+  {% endif %}
   <div class="container">
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% for category, message in messages %}

@@ -8,7 +8,7 @@ from functools import wraps
 
 from flask import (
     Flask, render_template, request, redirect, url_for, flash, abort, jsonify,
-    send_from_directory,
+    send_from_directory, session,
 )
 from flask_login import (
     LoginManager, login_user, logout_user, login_required, current_user
@@ -315,8 +315,53 @@ def login():
 @app.route("/logout")
 @login_required
 def logout():
+    session.pop("impersonator_id", None)
     logout_user()
     return redirect(url_for("login"))
+
+
+# ---------------------------------------------------------------------------
+# Admin impersonation ("Log in as user") - lets an Admin view the portal
+# exactly as another user sees it, to verify their access/permissions.
+# ---------------------------------------------------------------------------
+@app.route("/users/<int:user_id>/impersonate", methods=["POST"])
+@login_required
+@admin_required
+def impersonate_user(user_id):
+    if session.get("impersonator_id"):
+        flash("You're already viewing as another user. Return to your Admin account first.", "error")
+        return redirect(url_for("manage_users"))
+
+    target = db.session.get(User, user_id) or abort(404)
+    if target.id == current_user.id:
+        flash("You're already logged in as yourself.", "error")
+        return redirect(url_for("manage_users"))
+
+    session["impersonator_id"] = current_user.id
+    login_user(target)
+    flash(f"You are now viewing the portal as {target.full_name}.", "success")
+    return redirect(url_for("my_open_escalations"))
+
+
+@app.route("/users/stop-impersonating", methods=["POST"])
+@login_required
+def stop_impersonating():
+    impersonator_id = session.pop("impersonator_id", None)
+    if not impersonator_id:
+        flash("You're not currently viewing as another user.", "error")
+        return redirect(url_for("my_open_escalations"))
+
+    admin_user = db.session.get(User, impersonator_id)
+    if not admin_user or not admin_user.is_admin():
+        # Safety net: if the original admin account is gone/no longer an
+        # admin, don't strand the session in an odd state - just log out.
+        logout_user()
+        flash("Returned to login.", "success")
+        return redirect(url_for("login"))
+
+    login_user(admin_user)
+    flash("You're back in your own Admin account.", "success")
+    return redirect(url_for("manage_users"))
 
 
 @app.route("/forgot-password", methods=["GET", "POST"])
