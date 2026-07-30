@@ -23,7 +23,7 @@ import bleach
 from models import (
     db, User, Escalation, Comment, SavedReportView, Attachment, Mention, MigrationFlag,
     ROLES, STANDARD_ROLES, ROLE_FOR_RECRUITER_FIELD, ROLE_FOR_SALES_REP_FIELD, ROLE_FOR_COMPLIANCE_FIELD,
-    ROLE_FOR_PAYROLL_SPECIALIST_FIELD, ROLE_FOR_AC_FIELD,
+    ROLE_FOR_PAYROLL_SPECIALIST_FIELD, ROLE_FOR_AC_FIELD, RETIRED_ROLE_COMPLIANCE_SPECIALIST,
     ESCALATION_TYPES, ALL_ESCALATION_TYPES_FOR_DISPLAY, CLINICAL_TYPES, SUBTYPES_BY_TYPE, YES_NO,
     STATUS_VALUES, OPEN_STATUSES, CLOSED_STATUSES, STATUS_VALUES_BY_TYPE,
     REQUIRED_SUBTYPE_TYPES, DISCUSSED_WITH_MANAGER_NOT_REQUIRED_TYPES,
@@ -1399,6 +1399,21 @@ with app.app_context():
         db.session.add(MigrationFlag(key="manager_to_director_rename"))
         db.session.commit()
         print(f"Auto-migration: renamed {len(_legacy_managers)} Manager-role user(s) to Director.")
+
+    # One-time data migration: the "Compliance Specialist" role has been
+    # retired and merged into "Compliance" - every existing user with that
+    # role becomes role="Compliance". Guarded by its own MigrationFlag marker
+    # so it only ever runs once, same pattern as the Manager->Director rename
+    # above (and for the same reason: "Compliance Specialist" could otherwise
+    # theoretically be re-added as a role name later without this migration
+    # firing again unexpectedly).
+    if not db.session.get(MigrationFlag, "compliance_specialist_to_compliance_rename"):
+        _legacy_compliance_specialists = User.query.filter_by(role=RETIRED_ROLE_COMPLIANCE_SPECIALIST).all()
+        for _u in _legacy_compliance_specialists:
+            _u.role = "Compliance"
+        db.session.add(MigrationFlag(key="compliance_specialist_to_compliance_rename"))
+        db.session.commit()
+        print(f"Auto-migration: renamed {len(_legacy_compliance_specialists)} Compliance Specialist-role user(s) to Compliance.")
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)

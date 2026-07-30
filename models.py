@@ -14,18 +14,24 @@ db = SQLAlchemy()
 # behavior is expanded visibility into their direct reports' records.
 ROLES = [
     "Admin", "Director", "Manager", "Recruiter", "Account Manager",
-    "Compliance Specialist", "Payroll", "Compliance", "AC",
+    "Payroll", "Compliance", "AC",
 ]
 
 # Roles that are NOT Admin/Director - i.e. everyday portal users (identical page access)
 STANDARD_ROLES = [
-    "Recruiter", "Account Manager", "Compliance Specialist", "Payroll", "Compliance", "Manager", "AC",
+    "Recruiter", "Account Manager", "Payroll", "Compliance", "Manager", "AC",
 ]
+
+# The "Compliance Specialist" role has been retired and merged into "Compliance"
+# (existing users are migrated to "Compliance" on boot - see the one-time
+# migration in app.py). Kept here only so the boot-time migration and any
+# legacy-data lookups know what the old role string was.
+RETIRED_ROLE_COMPLIANCE_SPECIALIST = "Compliance Specialist"
 
 # Which portal role fills which Escalation lookup field
 ROLE_FOR_RECRUITER_FIELD = "Recruiter"
 ROLE_FOR_SALES_REP_FIELD = "Account Manager"
-ROLE_FOR_COMPLIANCE_FIELD = "Compliance Specialist"
+ROLE_FOR_COMPLIANCE_FIELD = "Compliance"
 ROLE_FOR_PAYROLL_SPECIALIST_FIELD = "Payroll"
 ROLE_FOR_AC_FIELD = "AC"
 
