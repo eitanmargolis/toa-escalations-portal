@@ -35,12 +35,23 @@ ROLE_FOR_COMPLIANCE_FIELD = "Compliance"
 ROLE_FOR_PAYROLL_SPECIALIST_FIELD = "Payroll"
 ROLE_FOR_AC_FIELD = "AC"
 
-# Type values retired from the CREATE form's picklist but still valid data on
-# older existing records (kept out of ESCALATION_TYPES so they don't appear as
-# selectable options for NEW escalations).
+# Type values retired from the CREATE form's picklist AND (as of this batch,
+# item 7) fully retired from the detail/edit page's live Type dropdown too -
+# they no longer appear as a *selectable* option anywhere, for anyone. An
+# existing record still holding one of these values keeps displaying/saving
+# it correctly via a disabled/read-only control on the detail page (see
+# escalation_detail.html) instead of a live <select> - that is what makes it
+# safe to drop these out of every dropdown without silently corrupting data
+# on save (a normal <select> with no matching <option> would otherwise
+# default-select and submit whatever option happens to be first in the list).
+# "Contract & Extension" was folded into this bucket in this same batch
+# (item 6) since it is being retired in favor of the "Contract" value and the
+# client asked for retired types to behave consistently. "Other" was already
+# here from a prior batch and is kept in this same bucket for the same
+# data-safety reason (see item 7 write-up in the deploy notes).
 RETIRED_ESCALATION_TYPES = [
     "Performance & Conduct", "Attendance", "Other",
-    "Scheduling & Hours", "Housing & Travel",
+    "Scheduling & Hours", "Housing & Travel", "Contract & Extension",
 ]
 
 ESCALATION_TYPES = [
@@ -48,14 +59,16 @@ ESCALATION_TYPES = [
     "Clinical - Client Initiated",
     "Compliance & Credentialing",
     "Payroll & Timekeeping",
-    "Contract & Extension",
     "Personal (Yellow Flag)",
     "Pre-Start",
     "Contract",
 ]
 
-# Full set of type values valid for DISPLAY purposes (new + retired) - used on
-# the detail/edit page so old records don't lose their Type option/value.
+# Kept only for the Reporting tab's Type FILTER dropdown (app.py's reporting()
+# view), where listing retired values alongside live ones is safe and useful
+# (filtering never writes data, so there's no risk of a retired value being
+# silently swapped for another on save). NOT used anywhere records are
+# created or edited any more - see RETIRED_ESCALATION_TYPES above for why.
 ALL_ESCALATION_TYPES_FOR_DISPLAY = ESCALATION_TYPES + RETIRED_ESCALATION_TYPES
 
 CLINICAL_TYPES = ["Clinical - Traveler Initiated", "Clinical - Client Initiated"]
@@ -285,7 +298,12 @@ class Escalation(db.Model):
     recruiter_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     recruiter = db.relationship("User", foreign_keys=[recruiter_id])
 
-    sales_rep_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    # As of item 3 (this batch): nullable, because the Sales Rep field is now
+    # hidden (and not required/collected) on the create form for Payroll &
+    # Timekeeping escalations whose Subtype is Paycheck Error, Late, or
+    # Reimbursements. Still required/collected for every other Type+Subtype
+    # combination via app.py's create-form validation.
+    sales_rep_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     sales_rep = db.relationship("User", foreign_keys=[sales_rep_id])
 
     ac_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)  # auto-set from Sales Rep's assigned AC
@@ -309,8 +327,15 @@ class Escalation(db.Model):
     compliance_manager_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     compliance_manager = db.relationship("User", foreign_keys=[compliance_manager_id])
 
-    # Pre-Start type: a separate Compliance Specialist/Manager pair, distinct
-    # from the top-level Compliance Specialist field used by other types.
+    # RETIRED as of item 1 (this batch): Pre-Start records used to have a
+    # separate Compliance Specialist/Manager pair here, distinct from the
+    # top-level compliance_specialist_id/compliance_manager_id fields used by
+    # other types. That duplication is now removed from the page layout -
+    # Pre-Start uses the same general compliance_specialist_id/
+    # compliance_manager_id fields as Compliance & Credentialing does. These
+    # two columns are kept (not dropped) purely so no historical data is
+    # lost; a one-time boot migration in app.py copies any value here into
+    # the general fields. Do not read/write these columns from new code.
     prestart_compliance_specialist_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     prestart_compliance_specialist = db.relationship("User", foreign_keys=[prestart_compliance_specialist_id])
     prestart_compliance_manager_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)

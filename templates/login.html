@@ -7,6 +7,7 @@
   <h1 style="text-align:center;">COAST MEDICAL SERVICE</h1>
   <p style="text-align:center;color:var(--brand-gray);">TOA Escalations Portal</p>
   <form method="post">
+    <input type="hidden" name="next" value="{{ request.args.get('next', '') }}">
     <label>Email</label>
     <input type="email" name="email" required>
     <br><br>

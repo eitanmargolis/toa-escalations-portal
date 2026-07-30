@@ -5,6 +5,7 @@ import secrets
 import uuid
 from datetime import datetime, timedelta
 from functools import wraps
+from urllib.parse import urlparse
 
 from flask import (
     Flask, render_template, request, redirect, url_for, flash, abort, jsonify,
@@ -24,7 +25,7 @@ from models import (
     db, User, Escalation, Comment, SavedReportView, Attachment, Mention, MigrationFlag,
     ROLES, STANDARD_ROLES, ROLE_FOR_RECRUITER_FIELD, ROLE_FOR_SALES_REP_FIELD, ROLE_FOR_COMPLIANCE_FIELD,
     ROLE_FOR_PAYROLL_SPECIALIST_FIELD, ROLE_FOR_AC_FIELD, RETIRED_ROLE_COMPLIANCE_SPECIALIST,
-    ESCALATION_TYPES, ALL_ESCALATION_TYPES_FOR_DISPLAY, CLINICAL_TYPES, SUBTYPES_BY_TYPE, YES_NO,
+    ESCALATION_TYPES, ALL_ESCALATION_TYPES_FOR_DISPLAY, RETIRED_ESCALATION_TYPES, CLINICAL_TYPES, SUBTYPES_BY_TYPE, YES_NO,
     STATUS_VALUES, OPEN_STATUSES, CLOSED_STATUSES, STATUS_VALUES_BY_TYPE,
     REQUIRED_SUBTYPE_TYPES, DISCUSSED_WITH_MANAGER_NOT_REQUIRED_TYPES,
     TYPE_COMPLIANCE, TYPE_PAYROLL, TYPE_CONTRACT, TYPE_PRESTART,
@@ -43,6 +44,20 @@ app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:/
     "postgres://", "postgresql://", 1
 )
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+# Postgres connections can silently go stale (the DB or network drops them
+# while idle), which previously surfaced as "SSL SYSCALL error: EOF detected"
+# Internal Server Errors on whatever request happened to reuse that dead
+# connection next. pool_pre_ping makes SQLAlchemy test a connection with a
+# cheap "is this still alive?" check before using it, transparently
+# reconnecting if not, instead of erroring out to the user. pool_recycle
+# proactively retires connections after 5 minutes so we never hand out one
+# old enough for Postgres/the network to have already dropped it. This
+# matters more as more people (45 users) hold the app open at once.
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+    "pool_pre_ping": True,
+    "pool_recycle": 280,
+}
 app.config["UPLOAD_FOLDER"] = os.environ.get("UPLOAD_FOLDER", os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads"))
 app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024  # 20 MB per request
 
@@ -256,6 +271,29 @@ def compliance_specialist_hidden_for_type(esc_type):
     return esc_type in CLINICAL_TYPES or esc_type == TYPE_PAYROLL
 
 
+def compliance_manager_applicable(esc_type):
+    """Item 1 (this batch): the Compliance Manager field (Related Users,
+    auto-derived from the Compliance Specialist's manager) is shown/derived
+    for Compliance & Credentialing (pre-existing) AND, as of this batch, for
+    Pre-Start too - Pre-Start no longer has its own separate
+    prestart_compliance_specialist_id/prestart_compliance_manager_id pair on
+    the page layout; it now shares the general compliance_specialist_id/
+    compliance_manager_id fields with Compliance & Credentialing."""
+    return esc_type in (TYPE_COMPLIANCE, TYPE_PRESTART)
+
+
+# Item 3 (this batch): Payroll & Timekeeping Subtypes for which Sales Rep and
+# AC are removed from the page layout entirely. Verified against the exact
+# Subtype strings in SUBTYPES_BY_TYPE[TYPE_PAYROLL] - "Timekeeping" is
+# deliberately excluded (Sales Rep/AC stay visible+required for that Subtype,
+# and for Payroll & Timekeeping records with no Subtype chosen yet).
+PAYROLL_HIDE_SALES_REP_AC_SUBTYPES = ["Paycheck Error", "Late", "Reimbursements"]
+
+
+def sales_rep_ac_hidden_for(esc_type, esc_subtype):
+    return esc_type == TYPE_PAYROLL and esc_subtype in PAYROLL_HIDE_SALES_REP_AC_SUBTYPES
+
+
 def subtype_required_for_type(esc_type):
     return esc_type in CLINICAL_TYPES or esc_type in REQUIRED_SUBTYPE_TYPES
 
@@ -316,14 +354,44 @@ app.jinja_env.filters["status_css_class"] = status_css_class
 # ---------------------------------------------------------------------------
 # Auth
 # ---------------------------------------------------------------------------
+def is_safe_next_url(target):
+    """Item 2: only allow redirecting to a same-site relative path after
+    login. Rejects anything that could send the user off-site (a classic
+    open-redirect vector) - absolute URLs (http://..., https://...),
+    protocol-relative URLs (//evil.com), and backslash tricks some browsers
+    normalize to forward slashes (/\evil.com) are all rejected. Uses
+    urllib.parse.urlparse to confirm there's no netloc/scheme component,
+    which is the standard safe-redirect check."""
+    if not target:
+        return False
+    if not target.startswith("/") or target.startswith("//") or target.startswith("/\\"):
+        return False
+    parsed = urlparse(target)
+    if parsed.netloc or parsed.scheme:
+        return False
+    return True
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    # Flask-Login's @login_required appends ?next=<originally-requested-page>
+    # when it redirects an unauthenticated user here (login_manager.login_view
+    # = "login" is set above). Read it from the query string on the initial
+    # GET, and also from the submitted form (a hidden field in login.html
+    # carries it through the GET->POST submission) so it survives the login
+    # form post. This is what makes "click a link in an email while logged
+    # out" (mention emails, action-to emails, status-change emails, etc.)
+    # land back on the original page instead of always going to My Open
+    # Escalations.
+    next_url = request.form.get("next") or request.args.get("next")
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
         user = User.query.filter(db.func.lower(User.email) == email).first()
         if user and user.check_password(password):
             login_user(user)
+            if is_safe_next_url(next_url):
+                return redirect(next_url)
             return redirect(url_for("my_open_escalations"))
         flash("Invalid email or password.", "error")
     return render_template("login.html")
@@ -535,14 +603,21 @@ def new_escalation():
         # Payroll Specialist "Assigned" free-text (item 4b/7c)
         payroll_specialist_assigned = f.get("payroll_specialist_assigned") or None if payroll_applicable else None
 
-        # Pre-Start fields (item 6b)
-        if esc_type == TYPE_PRESTART:
-            prestart_compliance_specialist_id = f.get("prestart_compliance_specialist_id") or None
-        else:
-            prestart_compliance_specialist_id = None
+        # NOTE (item 1, this batch): Pre-Start no longer has its own
+        # prestart_compliance_specialist_id field on the page layout - it now
+        # shares the general compliance_specialist_id field (handled above
+        # via compliance_specialist_hidden_for_type()) with Compliance &
+        # Credentialing. prestart_compliance_specialist_id is never set on
+        # new records any more; the column is kept only for historical data
+        # on pre-existing records (see the one-time boot migration below).
 
+        # Item 3 (this batch): Sales Rep (and AC) are hidden/not required for
+        # Payroll & Timekeeping records whose Subtype is Paycheck Error, Late,
+        # or Reimbursements. sales_rep_id is nullable at the DB level to
+        # support this - see models.py.
+        sales_rep_ac_hidden = sales_rep_ac_hidden_for(esc_type, subtype)
         sales_rep_id = f.get("sales_rep_id") or None
-        ac_id = derive_ac_id(f.get("ac_id"), sales_rep_id)
+        ac_id = None if sales_rep_ac_hidden else derive_ac_id(f.get("ac_id"), sales_rep_id)
 
         esc = Escalation(
             type=esc_type,
@@ -560,7 +635,6 @@ def new_escalation():
             payroll_specialist_id=f.get("payroll_specialist_id") or None if payroll_applicable else None,
             payroll_specialist_assigned=payroll_specialist_assigned,
             clinical_liaison_id=f.get("clinical_liaison_id") or None,
-            prestart_compliance_specialist_id=prestart_compliance_specialist_id,
             details=sanitize_html(f.get("details")),
             action_to_id=f.get("action_to_id") or None,
             action_item=f.get("action_item") or None,
@@ -586,12 +660,17 @@ def new_escalation():
 
         # Required field validation
         required_missing = []
-        for label, val in [
+        required_fields = [
             ("Type", esc.type), ("Candidate", esc.candidate),
             ("Facility", esc.facility), ("Assignment URL", esc.assignment_url),
-            ("Recruiter", esc.recruiter_id), ("Sales Rep", esc.sales_rep_id),
+            ("Recruiter", esc.recruiter_id),
             ("Details/What Happened?", esc.details),
-        ]:
+        ]
+        # Sales Rep is not required when hidden (item 3: Payroll & Timekeeping
+        # with Subtype Paycheck Error / Late / Reimbursements).
+        if not sales_rep_ac_hidden_for(esc.type, esc.subtype):
+            required_fields.append(("Sales Rep", esc.sales_rep_id))
+        for label, val in required_fields:
             if not val:
                 required_missing.append(label)
         if discussed_with_manager_required_for_type(esc.type) and not esc.discussed_with_manager:
@@ -643,11 +722,13 @@ def new_escalation():
                 esc.clinical_liaison_id = liaison.id
             # If she isn't found in the User table, just skip - don't crash creation.
 
-        # Auto-derive Compliance Manager / Pre-Start Compliance Manager (items 2d/6b)
-        if esc.type == TYPE_COMPLIANCE:
+        # Auto-derive Compliance Manager (items 2d, and item 1 of this batch):
+        # fires for Compliance & Credentialing AND Pre-Start now, both derived
+        # from the general compliance_specialist_id field. The old separate
+        # prestart_compliance_manager_id derivation is retired along with the
+        # prestart-specific fields (see models.py comment on those columns).
+        if compliance_manager_applicable(esc.type):
             esc.compliance_manager_id = derive_manager_id(esc.compliance_specialist_id)
-        if esc.type == TYPE_PRESTART:
-            esc.prestart_compliance_manager_id = derive_manager_id(esc.prestart_compliance_specialist_id)
 
         db.session.add(esc)
         db.session.commit()
@@ -968,10 +1049,11 @@ def view_escalation(escalation_id):
             esc.payroll_specialist_id = None
             esc.payroll_specialist_assigned = None
         esc.clinical_liaison_id = f.get("clinical_liaison_id") or esc.clinical_liaison_id
-        if new_type == TYPE_PRESTART:
-            esc.prestart_compliance_specialist_id = f.get("prestart_compliance_specialist_id") or esc.prestart_compliance_specialist_id
-        else:
-            esc.prestart_compliance_specialist_id = None
+        # NOTE (item 1, this batch): prestart_compliance_specialist_id is no
+        # longer read from the form or nulled out here - the field was
+        # removed from the page layout (Pre-Start now uses the general
+        # compliance_specialist_id field above instead). Left untouched so
+        # any historical value already on the record is preserved as-is.
         esc.details = sanitize_html(f.get("details"))
         esc.action_to_id = new_action_to_id
         esc.action_item = new_action_item
@@ -1016,15 +1098,18 @@ def view_escalation(escalation_id):
             if liaison:
                 esc.clinical_liaison_id = liaison.id
 
-        # Auto-derive Compliance Manager / Pre-Start Compliance Manager (items 2d/6b)
-        if esc.type == TYPE_COMPLIANCE:
+        # Auto-derive Compliance Manager (items 2d, and item 1 of this batch):
+        # fires for Compliance & Credentialing AND Pre-Start now, both derived
+        # from the general compliance_specialist_id field. The old separate
+        # prestart_compliance_manager_id derivation is retired along with the
+        # prestart-specific fields (see models.py comment on those columns) -
+        # prestart_compliance_specialist_id / prestart_compliance_manager_id
+        # are intentionally left untouched here so historical data on
+        # existing records is preserved.
+        if compliance_manager_applicable(esc.type):
             esc.compliance_manager_id = derive_manager_id(esc.compliance_specialist_id)
         else:
             esc.compliance_manager_id = None
-        if esc.type == TYPE_PRESTART:
-            esc.prestart_compliance_manager_id = derive_manager_id(esc.prestart_compliance_specialist_id)
-        else:
-            esc.prestart_compliance_manager_id = None
 
         db.session.commit()
 
@@ -1076,7 +1161,15 @@ def view_escalation(escalation_id):
         payroll_specialists=payroll_specialists, clinical_liaisons=clinical_liaisons,
         acs=acs, sales_rep_ac_map=sales_rep_ac_map,
         all_users=all_users,
-        types=ALL_ESCALATION_TYPES_FOR_DISPLAY, clinical_types=CLINICAL_TYPES, subtypes_by_type=SUBTYPES_BY_TYPE,
+        # Item 7 (this batch): the Type dropdown on this page uses the LIVE
+        # list only (ESCALATION_TYPES) - never ALL_ESCALATION_TYPES_FOR_DISPLAY
+        # - so retired values can never be (re)selected on any record, by
+        # anyone. A record whose current Type is one of RETIRED_ESCALATION_TYPES
+        # instead gets a disabled/read-only Type control (see the template) so
+        # its historical value keeps displaying/saving correctly without a
+        # live <select> silently defaulting to some other value on save.
+        types=ESCALATION_TYPES, retired_types=RETIRED_ESCALATION_TYPES,
+        clinical_types=CLINICAL_TYPES, subtypes_by_type=SUBTYPES_BY_TYPE,
         yes_no=YES_NO, statuses=status_options_for_type(esc.type, esc.status),
         status_values_by_type=STATUS_VALUES_BY_TYPE, all_statuses=STATUS_VALUES,
         best_times=BEST_TIME_SLOTS, time_zones=TIME_ZONES,
@@ -1453,6 +1546,31 @@ with app.app_context():
         db.session.add(MigrationFlag(key="compliance_specialist_to_compliance_rename"))
         db.session.commit()
         print(f"Auto-migration: renamed {len(_legacy_compliance_specialists)} Compliance Specialist-role user(s) to Compliance.")
+
+    # One-time data migration (item 1 of this batch): Pre-Start used to have
+    # its own separate prestart_compliance_specialist_id/
+    # prestart_compliance_manager_id field pair, distinct from the general
+    # compliance_specialist_id/compliance_manager_id fields used elsewhere.
+    # That duplication is now removed from the page layout - Pre-Start shares
+    # the general fields with Compliance & Credentialing instead. For any
+    # existing Pre-Start record that has a prestart_compliance_specialist_id
+    # value but no general compliance_specialist_id value yet, copy it over
+    # and re-derive compliance_manager_id from it, so no historical
+    # compliance specialist/manager data is silently lost. Guarded by a
+    # MigrationFlag marker so it runs exactly once, ever - same pattern as
+    # the two migrations above. The old prestart_* columns are left in place
+    # (untouched) afterwards purely as a historical record.
+    if not db.session.get(MigrationFlag, "prestart_compliance_specialist_consolidation"):
+        _prestart_records = Escalation.query.filter_by(type=TYPE_PRESTART).all()
+        _migrated_count = 0
+        for _e in _prestart_records:
+            if _e.prestart_compliance_specialist_id and not _e.compliance_specialist_id:
+                _e.compliance_specialist_id = _e.prestart_compliance_specialist_id
+                _e.compliance_manager_id = derive_manager_id(_e.compliance_specialist_id)
+                _migrated_count += 1
+        db.session.add(MigrationFlag(key="prestart_compliance_specialist_consolidation"))
+        db.session.commit()
+        print(f"Auto-migration: consolidated Compliance Specialist/Manager for {_migrated_count} Pre-Start escalation(s) into the general field.")
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)

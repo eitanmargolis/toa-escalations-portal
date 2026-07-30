@@ -55,14 +55,14 @@
         {% for u in recruiters %}<option value="{{ u.id }}">{{ u.full_name }}</option>{% endfor %}
       </select>
     </div>
-    <div>
-      <label>Sales Rep *</label>
+    <div id="salesRepWrapper">
+      <label>Sales Rep<span id="salesRepRequiredMark"> *</span></label>
       <select name="sales_rep_id" id="salesRepField" required>
         <option value="">-- Select --</option>
         {% for u in sales_reps %}<option value="{{ u.id }}">{{ u.full_name }}</option>{% endfor %}
       </select>
     </div>
-    <div>
+    <div id="acWrapper">
       <label>AC</label>
       <select name="ac_id" id="acField">
         <option value="">-- Auto-assigned from Sales Rep --</option>
@@ -171,22 +171,6 @@
       <label>WE Date<span> *</span></label>
       <input type="date" name="we_date" id="weDateField">
     </div>
-    <div id="dateToBePaidWrapper" style="display:none;">
-      <label>Date to be paid</label>
-      <input type="date" name="date_to_be_paid">
-    </div>
-
-    <div id="prestartComplianceSpecialistWrapper" style="display:none;">
-      <label>Compliance Specialist</label>
-      <select name="prestart_compliance_specialist_id" id="prestartComplianceSpecialistField">
-        <option value="">-- Select --</option>
-        {% for u in compliance_specialists %}<option value="{{ u.id }}">{{ u.full_name }}</option>{% endfor %}
-      </select>
-    </div>
-    <div id="prestartComplianceManagerWrapper" style="display:none;">
-      <label>Compliance Manager</label>
-      <input type="text" disabled placeholder="Auto-set from Compliance Specialist's manager on save">
-    </div>
 
     <div class="full">
       <label>Attach Documents</label>
@@ -196,6 +180,10 @@
 
   <div class="section-header">Resolution</div>
   <div class="form-grid">
+    <div id="dateToBePaidWrapper" style="display:none;">
+      <label>Date to be paid</label>
+      <input type="date" name="date_to_be_paid">
+    </div>
     <div id="dnrFacilityWrapper" style="display:none;">
       <label><input type="checkbox" name="dnr_facility" id="dnrFacilityCheck" style="width:auto;"> DNR Facility</label>
     </div>
@@ -234,6 +222,9 @@ const TYPE_CONTRACT = "Contract";
 const TYPE_PRESTART = "Pre-Start";
 const REQUIRED_SUBTYPE_TYPES = [TYPE_COMPLIANCE, TYPE_PAYROLL, TYPE_CONTRACT];
 const DISCUSSED_NOT_REQUIRED_TYPES = [TYPE_COMPLIANCE, TYPE_PAYROLL];
+// Item 3 (this batch): Payroll & Timekeeping Subtypes for which Sales Rep/AC
+// are removed from the page layout entirely. Must match SUBTYPES_BY_TYPE.
+const PAYROLL_HIDE_SALES_REP_AC_SUBTYPES = ["Paycheck Error", "Late", "Reimbursements"];
 
 const typeField = document.getElementById('typeField');
 const subtypeWrapper = document.getElementById('subtypeWrapper');
@@ -262,8 +253,6 @@ const pushedStartNotesWrapper = document.getElementById('pushedStartNotesWrapper
 const weDateWrapper = document.getElementById('weDateWrapper');
 const weDateField = document.getElementById('weDateField');
 const dateToBePaidWrapper = document.getElementById('dateToBePaidWrapper');
-const prestartComplianceSpecialistWrapper = document.getElementById('prestartComplianceSpecialistWrapper');
-const prestartComplianceManagerWrapper = document.getElementById('prestartComplianceManagerWrapper');
 const dnrFacilityWrapper = document.getElementById('dnrFacilityWrapper');
 const dnrFacilityNotesWrapper = document.getElementById('dnrFacilityNotesWrapper');
 const dnrMspWrapper = document.getElementById('dnrMspWrapper');
@@ -272,6 +261,9 @@ const dnrHospitalWrapper = document.getElementById('dnrHospitalWrapper');
 const dnrHospitalNotesWrapper = document.getElementById('dnrHospitalNotesWrapper');
 const salesRepField = document.getElementById('salesRepField');
 const acField = document.getElementById('acField');
+const salesRepWrapper = document.getElementById('salesRepWrapper');
+const acWrapper = document.getElementById('acWrapper');
+const salesRepRequiredMark = document.getElementById('salesRepRequiredMark');
 
 function syncSubtype() {
   const type = typeField.value;
@@ -304,7 +296,7 @@ function syncSubtype() {
     complianceField.required = true;
     complianceRequiredMark.style.display = '';
   }
-  complianceManagerWrapper.style.display = isCompliance ? '' : 'none';
+  complianceManagerWrapper.style.display = (isCompliance || isPrestart) ? '' : 'none';
 
   // Payroll Specialist section (dropdown + free-text Assigned box) - item 7c
   syncPayrollVisibility();
@@ -340,9 +332,9 @@ function syncSubtype() {
   weDateField.required = isPayroll;
   dateToBePaidWrapper.style.display = isPayroll ? '' : 'none';
 
-  // Pre-Start fields (item 6b)
-  prestartComplianceSpecialistWrapper.style.display = isPrestart ? '' : 'none';
-  prestartComplianceManagerWrapper.style.display = isPrestart ? '' : 'none';
+  // Sales Rep / AC (item 3): hidden + not required for Payroll & Timekeeping
+  // with Subtype Paycheck Error / Late / Reimbursements only.
+  syncSalesRepAcVisibility();
 
   // DNR fields (item 1) - Clinical types only; the *_notes wrapper additionally
   // depends on whether its checkbox is currently checked (handled in syncDnrVisibility).
@@ -372,11 +364,27 @@ function syncPayrollVisibility() {
   payrollSpecialistAssignedWrapper.style.display = payrollApplicable ? '' : 'none';
 }
 
+// Item 3 (this batch): Sales Rep + AC removed from the page layout for
+// Payroll & Timekeeping with Subtype Paycheck Error / Late / Reimbursements.
+// Depends on both Type and Subtype, so it's re-run on changes to either.
+function syncSalesRepAcVisibility() {
+  const type = typeField.value;
+  const hide = type === TYPE_PAYROLL && PAYROLL_HIDE_SALES_REP_AC_SUBTYPES.includes(subtypeField.value);
+  salesRepWrapper.style.display = hide ? 'none' : '';
+  acWrapper.style.display = hide ? 'none' : '';
+  salesRepField.required = !hide;
+  if (salesRepRequiredMark) salesRepRequiredMark.style.display = hide ? 'none' : '';
+  if (hide) salesRepField.value = '';
+}
+
 typeField.addEventListener('change', syncSubtype);
 // Subtype changes never rebuild the Subtype dropdown itself (that would wipe
-// out the selection the user just made) - only the Payroll Specialist
-// visibility depends on the live Subtype value (Contract + "Pay Changes").
-subtypeField.addEventListener('change', syncPayrollVisibility);
+// out the selection the user just made) - only the Payroll Specialist and
+// Sales Rep/AC visibility depend on the live Subtype value.
+subtypeField.addEventListener('change', function() {
+  syncPayrollVisibility();
+  syncSalesRepAcVisibility();
+});
 syncSubtype();
 
 // Sales Rep -> ACs field (item 10c): auto-fill AC live from a JSON map, client-side

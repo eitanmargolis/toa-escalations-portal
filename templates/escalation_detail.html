@@ -11,9 +11,16 @@
       <div class="form-grid">
         <div>
           <label>Type</label>
+          {% if esc.type in retired_types %}
+          <select name="type" id="typeField" disabled>
+            <option value="{{ esc.type }}" selected>{{ esc.type }}</option>
+          </select>
+          <p style="font-size:12px;color:var(--brand-gray);margin:4px 0 0;">This Type value has been retired and can no longer be selected. Choose a new Type to update this record.</p>
+          {% else %}
           <select name="type" id="typeField">
             {% for t in types %}<option value="{{ t }}" {{ 'selected' if esc.type==t }}>{{ t }}</option>{% endfor %}
           </select>
+          {% endif %}
           <div id="subtypeWrapper" style="margin-top:10px;">
             <label>Subtype</label>
             <select name="subtype" id="subtypeField">
@@ -26,10 +33,10 @@
         </div>
         <div>
           <label>Status</label>
-          <select name="status" id="statusSelect" {{ 'disabled' if not can_manage }}>
+          <select name="status" id="statusSelect" {{ 'disabled' if not can_edit_status }}>
             {% for s in statuses %}<option value="{{ s }}" {{ 'selected' if esc.status==s }}>{{ s }}</option>{% endfor %}
           </select>
-          {% if not can_manage %}<p style="font-size:12px;color:var(--brand-gray);margin:4px 0 0;">Only Managers/Admins can change Status.</p>{% endif %}
+          <p id="statusAccessNote" style="font-size:12px;color:var(--brand-gray);margin:4px 0 0;{{ '' if not can_edit_status else 'display:none;' }}">You don't have access to update Status for this escalation type.</p>
           {% if esc.status not in status_values_by_type.get(esc.type, all_statuses) %}
           <p style="font-size:12px;color:var(--brand-gray);margin:4px 0 0;">This record's current Status is a legacy value for this Type. It will keep displaying/saving fine as long as you don't change it.</p>
           {% endif %}
@@ -61,13 +68,13 @@
             {% for u in recruiters %}<option value="{{ u.id }}" {{ 'selected' if esc.recruiter_id==u.id }}>{{ u.full_name }}</option>{% endfor %}
           </select>
         </div>
-        <div>
+        <div id="salesRepWrapper">
           <label>Sales Rep</label>
           <select name="sales_rep_id" id="salesRepField">
             {% for u in sales_reps %}<option value="{{ u.id }}" {{ 'selected' if esc.sales_rep_id==u.id }}>{{ u.full_name }}</option>{% endfor %}
           </select>
         </div>
-        <div>
+        <div id="acWrapper">
           <label>AC</label>
           <select name="ac_id" id="acField">
             <option value="">-- Auto-assigned from Sales Rep --</option>
@@ -168,22 +175,6 @@
           <label>WE Date<span> *</span></label>
           <input type="date" name="we_date" id="weDateField" value="{{ esc.we_date or '' }}">
         </div>
-        <div id="dateToBePaidWrapper">
-          <label>Date to be paid</label>
-          <input type="date" name="date_to_be_paid" value="{{ esc.date_to_be_paid or '' }}">
-        </div>
-
-        <div id="prestartComplianceSpecialistWrapper">
-          <label>Compliance Specialist</label>
-          <select name="prestart_compliance_specialist_id" id="prestartComplianceSpecialistField">
-            <option value="">-- Select --</option>
-            {% for u in compliance_specialists %}<option value="{{ u.id }}" {{ 'selected' if esc.prestart_compliance_specialist_id==u.id }}>{{ u.full_name }}</option>{% endfor %}
-          </select>
-        </div>
-        <div id="prestartComplianceManagerWrapper">
-          <label>Compliance Manager</label>
-          <input type="text" disabled value="{{ esc.prestart_compliance_manager.full_name if esc.prestart_compliance_manager else '-' }}">
-        </div>
 
         <div class="full">
           <label>Attachments</label>
@@ -198,7 +189,8 @@
       </div>
 
       {% if can_manage %}
-      <div class="section-header">Confidential Information <span style="font-size:11px;font-weight:400;color:var(--brand-gray);">(Manager/Admin only)</span></div>
+      <div id="confidentialSectionWrapper" style="{{ '' if esc.type in clinical_types else 'display:none;' }}">
+      <div class="section-header">Confidential Information <span style="font-size:11px;font-weight:400;color:var(--brand-gray);">(Manager/Admin only, Clinical escalations only)</span></div>
       <div class="form-grid">
         <div class="full"><label>Notes</label><textarea name="confidential_notes">{{ esc.confidential_notes or '' }}</textarea></div>
         <div class="full">
@@ -212,14 +204,19 @@
           <input type="file" name="confidential_attachments" multiple>
         </div>
       </div>
+      </div>
       {% endif %}
 
       <div class="section-header">Resolution</div>
       <div class="form-grid">
+        <div id="dateToBePaidWrapper">
+          <label>Date to be paid</label>
+          <input type="date" name="date_to_be_paid" value="{{ esc.date_to_be_paid or '' }}">
+        </div>
         <div class="full"><label>Escalation Outcome</label><textarea name="complaint_outcome">{{ esc.complaint_outcome or '' }}</textarea></div>
-        <div><label><input type="checkbox" name="clinical_team_save" style="width:auto;" {{ 'checked' if esc.clinical_team_save }}> Clinical Team Save</label></div>
-        <div class="full"><label>Facility Resolution</label><textarea name="facility_resolution">{{ esc.facility_resolution or '' }}</textarea></div>
-        <div>
+        <div id="clinicalTeamSaveWrapper"><label><input type="checkbox" name="clinical_team_save" style="width:auto;" {{ 'checked' if esc.clinical_team_save }}> Clinical Team Save</label></div>
+        <div class="full" id="facilityResolutionWrapper"><label>Facility Resolution</label><textarea name="facility_resolution">{{ esc.facility_resolution or '' }}</textarea></div>
+        <div id="isTravelerCanceledWrapper">
           <label>Is Traveler Canceled?</label>
           <select name="is_traveler_canceled">
             <option value="">-- None --</option>
@@ -293,10 +290,21 @@ const ALL_STATUSES = {{ all_statuses|tojson }};
 const CURRENT_STATUS = {{ (esc.status or "")|tojson }};
 const TYPE_COMPLIANCE = "Compliance & Credentialing";
 const TYPE_PAYROLL = "Payroll & Timekeeping";
+const CURRENT_USER_ROLE = {{ current_user.role|tojson }};
+
+function computeCanEditStatus(type) {
+  if (["Admin", "Director", "Manager"].includes(CURRENT_USER_ROLE)) return true;
+  if (CURRENT_USER_ROLE === "Payroll" && type === TYPE_PAYROLL) return true;
+  if (CURRENT_USER_ROLE === "Compliance" && type === TYPE_COMPLIANCE) return true;
+  return false;
+}
 const TYPE_CONTRACT = "Contract";
 const TYPE_PRESTART = "Pre-Start";
 const REQUIRED_SUBTYPE_TYPES = [TYPE_COMPLIANCE, TYPE_PAYROLL, TYPE_CONTRACT];
 const DISCUSSED_NOT_REQUIRED_TYPES = [TYPE_COMPLIANCE, TYPE_PAYROLL];
+// Item 3 (this batch): Payroll & Timekeeping Subtypes for which Sales Rep/AC
+// are removed from the page layout entirely. Must match SUBTYPES_BY_TYPE.
+const PAYROLL_HIDE_SALES_REP_AC_SUBTYPES = ["Paycheck Error", "Late", "Reimbursements"];
 
 const typeField = document.getElementById('typeField');
 const subtypeWrapper = document.getElementById('subtypeWrapper');
@@ -304,6 +312,7 @@ const subtypeField = document.getElementById('subtypeField');
 const payrollSpecialistWrapper = document.getElementById('payrollSpecialistWrapper');
 const payrollSpecialistAssignedWrapper = document.getElementById('payrollSpecialistAssignedWrapper');
 const clinicalLiaisonWrapper = document.getElementById('clinicalLiaisonWrapper');
+const confidentialSectionWrapper = document.getElementById('confidentialSectionWrapper');
 const complianceWrapper = document.getElementById('complianceWrapper');
 const complianceField = document.getElementById('complianceField');
 const complianceManagerWrapper = document.getElementById('complianceManagerWrapper');
@@ -321,8 +330,6 @@ const pushedStartWrapper = document.getElementById('pushedStartWrapper');
 const pushedStartNotesWrapper = document.getElementById('pushedStartNotesWrapper');
 const weDateWrapper = document.getElementById('weDateWrapper');
 const dateToBePaidWrapper = document.getElementById('dateToBePaidWrapper');
-const prestartComplianceSpecialistWrapper = document.getElementById('prestartComplianceSpecialistWrapper');
-const prestartComplianceManagerWrapper = document.getElementById('prestartComplianceManagerWrapper');
 const dnrFacilityWrapper = document.getElementById('dnrFacilityWrapper');
 const dnrFacilityNotesWrapper = document.getElementById('dnrFacilityNotesWrapper');
 const dnrMspWrapper = document.getElementById('dnrMspWrapper');
@@ -331,7 +338,12 @@ const dnrHospitalWrapper = document.getElementById('dnrHospitalWrapper');
 const dnrHospitalNotesWrapper = document.getElementById('dnrHospitalNotesWrapper');
 const salesRepField = document.getElementById('salesRepField');
 const acField = document.getElementById('acField');
+const salesRepWrapper = document.getElementById('salesRepWrapper');
+const acWrapper = document.getElementById('acWrapper');
 const statusSelect = document.getElementById('statusSelect');
+const clinicalTeamSaveWrapper = document.getElementById('clinicalTeamSaveWrapper');
+const facilityResolutionWrapper = document.getElementById('facilityResolutionWrapper');
+const isTravelerCanceledWrapper = document.getElementById('isTravelerCanceledWrapper');
 
 function syncSubtype(preserveCurrent) {
   const type = typeField.value;
@@ -359,10 +371,11 @@ function syncSubtype(preserveCurrent) {
   } else {
     complianceWrapper.style.display = '';
   }
-  complianceManagerWrapper.style.display = isCompliance ? '' : 'none';
+  complianceManagerWrapper.style.display = (isCompliance || isPrestart) ? '' : 'none';
 
   syncPayrollVisibility();
   clinicalLiaisonWrapper.style.display = isClinical ? '' : 'none';
+  if (confidentialSectionWrapper) confidentialSectionWrapper.style.display = isClinical ? '' : 'none';
 
   const discussedRequired = !DISCUSSED_NOT_REQUIRED_TYPES.includes(type);
   discussedRequiredMark.style.display = discussedRequired ? '' : 'none';
@@ -382,8 +395,16 @@ function syncSubtype(preserveCurrent) {
   weDateWrapper.style.display = isPayroll ? '' : 'none';
   dateToBePaidWrapper.style.display = isPayroll ? '' : 'none';
 
-  prestartComplianceSpecialistWrapper.style.display = isPrestart ? '' : 'none';
-  prestartComplianceManagerWrapper.style.display = isPrestart ? '' : 'none';
+  // Item 4 (this batch): these 3 Resolution fields are removed entirely for
+  // Payroll & Timekeeping. Not required fields, no server-side nulling -
+  // purely a visibility change, existing data is preserved either way.
+  clinicalTeamSaveWrapper.style.display = isPayroll ? 'none' : '';
+  facilityResolutionWrapper.style.display = isPayroll ? 'none' : '';
+  isTravelerCanceledWrapper.style.display = isPayroll ? 'none' : '';
+
+  // Sales Rep / AC (item 3): hidden for Payroll & Timekeeping with Subtype
+  // Paycheck Error / Late / Reimbursements only.
+  syncSalesRepAcVisibility();
 
   [dnrFacilityWrapper, dnrMspWrapper, dnrHospitalWrapper].forEach(w => {
     w.style.display = isClinical ? '' : 'none';
@@ -419,6 +440,13 @@ function syncStatusOptions(type, preserveCurrent) {
     const sel = (s === priorValue) ? ' selected' : '';
     return `<option value="${s}"${sel}>${s}</option>`;
   }).join('');
+
+  // Payroll/Compliance-role users only get Status access for their matching
+  // Type, so re-evaluate live if Type is changed on the page without saving.
+  const canEditNow = computeCanEditStatus(type);
+  statusSelect.disabled = !canEditNow;
+  const note = document.getElementById('statusAccessNote');
+  if (note) note.style.display = canEditNow ? 'none' : '';
 }
 
 ['dnrFacilityCheck', 'dnrMspCheck', 'dnrHospitalCheck'].forEach(id => {
@@ -433,12 +461,28 @@ function syncPayrollVisibility() {
   payrollSpecialistAssignedWrapper.style.display = payrollApplicable ? '' : 'none';
 }
 
+// Item 3 (this batch): Sales Rep + AC removed from the page layout for
+// Payroll & Timekeeping with Subtype Paycheck Error / Late / Reimbursements.
+// Depends on both Type and Subtype, so it's re-run on changes to either.
+// Existing data is preserved either way - this only hides the inputs; the
+// server keeps whatever value is already stored when the field isn't
+// resubmitted (see app.py's view_escalation()).
+function syncSalesRepAcVisibility() {
+  const type = typeField.value;
+  const hide = type === TYPE_PAYROLL && PAYROLL_HIDE_SALES_REP_AC_SUBTYPES.includes(subtypeField.value);
+  salesRepWrapper.style.display = hide ? 'none' : '';
+  acWrapper.style.display = hide ? 'none' : '';
+}
+
 typeField.addEventListener('change', () => syncSubtype(false));
 // Subtype changes never rebuild the Subtype dropdown itself (that would wipe
 // out / revert the selection the user just made back to the record's
-// original stored value) - only Payroll Specialist visibility depends on the
-// live Subtype value (Contract + "Pay Changes").
-subtypeField.addEventListener('change', syncPayrollVisibility);
+// original stored value) - only Payroll Specialist and Sales Rep/AC
+// visibility depend on the live Subtype value.
+subtypeField.addEventListener('change', function() {
+  syncPayrollVisibility();
+  syncSalesRepAcVisibility();
+});
 syncSubtype(true);
 
 // Sales Rep -> AC field (item 10c)
