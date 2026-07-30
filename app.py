@@ -101,6 +101,23 @@ def manager_or_admin_required(fn):
     return wrapper
 
 
+def status_editable_by(user, esc_type):
+    """Who can edit the Status field on a given escalation.
+
+    - Admin, Director, and the scoped "Manager" role: always, any type.
+    - Payroll role: only when the escalation's Type is Payroll & Timekeeping.
+    - Compliance role: only when the escalation's Type is Compliance & Credentialing.
+    - Everyone else: never.
+    """
+    if user.role in ("Admin", "Director", "Manager"):
+        return True
+    if user.role == "Payroll" and esc_type == TYPE_PAYROLL:
+        return True
+    if user.role == "Compliance" and esc_type == TYPE_COMPLIANCE:
+        return True
+    return False
+
+
 # Well-known service accounts auto-assigned to specific escalation types.
 PAYROLL_TEAM_EMAIL = "payroll@coastmedicalservice.com"
 CLINICAL_LIAISON_EMAIL = "clinical@coastmedicalservice.com"
@@ -801,6 +818,9 @@ def view_escalation(escalation_id):
     all_users = User.query.order_by(User.first_name).all()
     sales_rep_ac_map = {u.id: u.assigned_ac_id for u in sales_reps}
     can_manage = manager_or_admin(current_user)
+    # Computed against esc.type as currently stored - i.e. as the page was
+    # actually rendered/submitted from, before this request changes anything.
+    can_edit_status = status_editable_by(current_user, esc.type)
 
     if request.method == "POST":
         f = request.form
@@ -845,13 +865,16 @@ def view_escalation(escalation_id):
             new_best_time = None
             new_time_zone = None
 
-        # Status field: only Manager/Admin (Director/Admin) may change it at all.
-        # Disabled selects aren't submitted by browsers, so a missing/unchanged
-        # "status" key from a legitimate page just means "no change". A raw
-        # request that tries to sneak a different value in from a non-manager
-        # is explicitly rejected below.
+        # Status field: who can edit it depends on role AND (for Payroll/
+        # Compliance) the escalation's current Type - see status_editable_by().
+        # Permission is evaluated against old_type (the type as the page was
+        # actually rendered/submitted from), not whatever new_type this same
+        # submission might also be changing it to. Disabled selects aren't
+        # submitted by browsers, so a missing/unchanged "status" key from a
+        # legitimate page just means "no change". A raw request that tries to
+        # sneak a different value in from someone without access is rejected.
         submitted_status = f.get("status")
-        if can_manage:
+        if can_edit_status:
             new_status = submitted_status or old_status
         else:
             new_status = old_status
@@ -1057,7 +1080,7 @@ def view_escalation(escalation_id):
         yes_no=YES_NO, statuses=status_options_for_type(esc.type, esc.status),
         status_values_by_type=STATUS_VALUES_BY_TYPE, all_statuses=STATUS_VALUES,
         best_times=BEST_TIME_SLOTS, time_zones=TIME_ZONES,
-        can_manage=can_manage,
+        can_manage=can_manage, can_edit_status=can_edit_status,
     )
 
 

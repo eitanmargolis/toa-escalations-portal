@@ -26,10 +26,10 @@
         </div>
         <div>
           <label>Status</label>
-          <select name="status" id="statusSelect" {{ 'disabled' if not can_manage }}>
+          <select name="status" id="statusSelect" {{ 'disabled' if not can_edit_status }}>
             {% for s in statuses %}<option value="{{ s }}" {{ 'selected' if esc.status==s }}>{{ s }}</option>{% endfor %}
           </select>
-          {% if not can_manage %}<p style="font-size:12px;color:var(--brand-gray);margin:4px 0 0;">Only Managers/Admins can change Status.</p>{% endif %}
+          <p id="statusAccessNote" style="font-size:12px;color:var(--brand-gray);margin:4px 0 0;{{ '' if not can_edit_status else 'display:none;' }}">You don't have access to update Status for this escalation type.</p>
           {% if esc.status not in status_values_by_type.get(esc.type, all_statuses) %}
           <p style="font-size:12px;color:var(--brand-gray);margin:4px 0 0;">This record's current Status is a legacy value for this Type. It will keep displaying/saving fine as long as you don't change it.</p>
           {% endif %}
@@ -295,6 +295,14 @@ const ALL_STATUSES = {{ all_statuses|tojson }};
 const CURRENT_STATUS = {{ (esc.status or "")|tojson }};
 const TYPE_COMPLIANCE = "Compliance & Credentialing";
 const TYPE_PAYROLL = "Payroll & Timekeeping";
+const CURRENT_USER_ROLE = {{ current_user.role|tojson }};
+
+function computeCanEditStatus(type) {
+  if (["Admin", "Director", "Manager"].includes(CURRENT_USER_ROLE)) return true;
+  if (CURRENT_USER_ROLE === "Payroll" && type === TYPE_PAYROLL) return true;
+  if (CURRENT_USER_ROLE === "Compliance" && type === TYPE_COMPLIANCE) return true;
+  return false;
+}
 const TYPE_CONTRACT = "Contract";
 const TYPE_PRESTART = "Pre-Start";
 const REQUIRED_SUBTYPE_TYPES = [TYPE_COMPLIANCE, TYPE_PAYROLL, TYPE_CONTRACT];
@@ -423,6 +431,13 @@ function syncStatusOptions(type, preserveCurrent) {
     const sel = (s === priorValue) ? ' selected' : '';
     return `<option value="${s}"${sel}>${s}</option>`;
   }).join('');
+
+  // Payroll/Compliance-role users only get Status access for their matching
+  // Type, so re-evaluate live if Type is changed on the page without saving.
+  const canEditNow = computeCanEditStatus(type);
+  statusSelect.disabled = !canEditNow;
+  const note = document.getElementById('statusAccessNote');
+  if (note) note.style.display = canEditNow ? 'none' : '';
 }
 
 ['dnrFacilityCheck', 'dnrMspCheck', 'dnrHospitalCheck'].forEach(id => {
