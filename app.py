@@ -687,6 +687,10 @@ def my_open_escalations():
             Escalation.action_to_id.in_(uids),
             Escalation.payroll_specialist_id.in_(uids),
             Escalation.clinical_liaison_id.in_(uids),
+            Escalation.ac_id.in_(uids),
+            Escalation.compliance_manager_id.in_(uids),
+            Escalation.prestart_compliance_specialist_id.in_(uids),
+            Escalation.prestart_compliance_manager_id.in_(uids),
         ),
     ).order_by(Escalation.created_at.desc()).all()
     return render_template("my_open_escalations.html", escalations=escalations)
@@ -707,6 +711,15 @@ def my_closed_escalations():
             Escalation.clinical_liaison_id.in_(uids),
             Escalation.compliance_specialist_id.in_(uids),
             Escalation.payroll_specialist_id.in_(uids),
+            Escalation.ac_id.in_(uids),
+            Escalation.compliance_manager_id.in_(uids),
+            Escalation.prestart_compliance_specialist_id.in_(uids),
+            Escalation.prestart_compliance_manager_id.in_(uids),
+            # Same related-user fields checked in My Open Escalations, so a
+            # Manager-role user's direct reports' records are never missed
+            # here just because they happen to be Closed.
+            Escalation.recruiter_manager_id.in_(uids),
+            Escalation.action_to_id.in_(uids),
         ),
     ).order_by(Escalation.created_at.desc()).all()
     return render_template("my_closed_escalations.html", escalations=escalations)
