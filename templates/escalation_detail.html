@@ -340,8 +340,6 @@ function syncSubtype(preserveCurrent) {
   const isPayroll = type === TYPE_PAYROLL;
   const isPrestart = type === TYPE_PRESTART;
   const subtypeRequired = isClinical || REQUIRED_SUBTYPE_TYPES.includes(type);
-  const payrollApplicable = isPayroll || (type === TYPE_CONTRACT && subtypeField.value === 'Pay Changes');
-
   if (subtypeRequired) {
     subtypeWrapper.style.display = '';
     const options = SUBTYPES_BY_TYPE[type] || [];
@@ -363,8 +361,7 @@ function syncSubtype(preserveCurrent) {
   }
   complianceManagerWrapper.style.display = isCompliance ? '' : 'none';
 
-  payrollSpecialistWrapper.style.display = payrollApplicable ? '' : 'none';
-  payrollSpecialistAssignedWrapper.style.display = payrollApplicable ? '' : 'none';
+  syncPayrollVisibility();
   clinicalLiaisonWrapper.style.display = isClinical ? '' : 'none';
 
   const discussedRequired = !DISCUSSED_NOT_REQUIRED_TYPES.includes(type);
@@ -428,8 +425,20 @@ function syncStatusOptions(type, preserveCurrent) {
   document.getElementById(id).addEventListener('change', () => syncDnrVisibility(CLINICAL_TYPES.includes(typeField.value)));
 });
 
+function syncPayrollVisibility() {
+  const type = typeField.value;
+  const isPayroll = type === TYPE_PAYROLL;
+  const payrollApplicable = isPayroll || (type === TYPE_CONTRACT && subtypeField.value === 'Pay Changes');
+  payrollSpecialistWrapper.style.display = payrollApplicable ? '' : 'none';
+  payrollSpecialistAssignedWrapper.style.display = payrollApplicable ? '' : 'none';
+}
+
 typeField.addEventListener('change', () => syncSubtype(false));
-subtypeField.addEventListener('change', () => syncSubtype(true));
+// Subtype changes never rebuild the Subtype dropdown itself (that would wipe
+// out / revert the selection the user just made back to the record's
+// original stored value) - only Payroll Specialist visibility depends on the
+// live Subtype value (Contract + "Pay Changes").
+subtypeField.addEventListener('change', syncPayrollVisibility);
 syncSubtype(true);
 
 // Sales Rep -> AC field (item 10c)

@@ -280,8 +280,6 @@ function syncSubtype() {
   const isPayroll = type === TYPE_PAYROLL;
   const isPrestart = type === TYPE_PRESTART;
   const subtypeRequired = isClinical || REQUIRED_SUBTYPE_TYPES.includes(type);
-  const payrollApplicable = isPayroll || (type === TYPE_CONTRACT && subtypeField.value === 'Pay Changes');
-
   if (subtypeRequired) {
     subtypeWrapper.style.display = '';
     subtypeField.required = true;
@@ -309,8 +307,7 @@ function syncSubtype() {
   complianceManagerWrapper.style.display = isCompliance ? '' : 'none';
 
   // Payroll Specialist section (dropdown + free-text Assigned box) - item 7c
-  payrollSpecialistWrapper.style.display = payrollApplicable ? '' : 'none';
-  payrollSpecialistAssignedWrapper.style.display = payrollApplicable ? '' : 'none';
+  syncPayrollVisibility();
 
   // Clinical Liaison field only shown for Clinical types
   clinicalLiaisonWrapper.style.display = isClinical ? '' : 'none';
@@ -367,8 +364,19 @@ function syncDnrVisibility(isClinical) {
     if (mark) mark.style.display = show ? '' : 'none';
   });
 }
+function syncPayrollVisibility() {
+  const type = typeField.value;
+  const isPayroll = type === TYPE_PAYROLL;
+  const payrollApplicable = isPayroll || (type === TYPE_CONTRACT && subtypeField.value === 'Pay Changes');
+  payrollSpecialistWrapper.style.display = payrollApplicable ? '' : 'none';
+  payrollSpecialistAssignedWrapper.style.display = payrollApplicable ? '' : 'none';
+}
+
 typeField.addEventListener('change', syncSubtype);
-subtypeField.addEventListener('change', syncSubtype);
+// Subtype changes never rebuild the Subtype dropdown itself (that would wipe
+// out the selection the user just made) - only the Payroll Specialist
+// visibility depends on the live Subtype value (Contract + "Pay Changes").
+subtypeField.addEventListener('change', syncPayrollVisibility);
 syncSubtype();
 
 // Sales Rep -> ACs field (item 10c): auto-fill AC live from a JSON map, client-side
