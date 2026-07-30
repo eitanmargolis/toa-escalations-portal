@@ -974,8 +974,11 @@ def view_escalation(escalation_id):
         esc.facility_resolution = f.get("facility_resolution") or None
         esc.is_traveler_canceled = f.get("is_traveler_canceled") or None
 
-        # Confidential Information - Manager/Admin (Director/Admin) only, ignore silently for anyone else
-        if can_manage and "confidential_notes" in f:
+        # Confidential Information - Manager/Admin (Director/Admin) only, AND
+        # only for Clinical - Traveler/Client Initiated escalations. Ignored
+        # silently (not an error) for anyone/anything else, matching the
+        # section's page-layout visibility.
+        if can_manage and esc.type in CLINICAL_TYPES and "confidential_notes" in f:
             esc.confidential_notes = f.get("confidential_notes") or None
 
         # Auto-set Payroll Specialist -> "Payroll Team" user
@@ -1002,8 +1005,8 @@ def view_escalation(escalation_id):
 
         db.session.commit()
 
-        # Confidential attachment upload (Manager/Admin only)
-        if can_manage:
+        # Confidential attachment upload (Manager/Admin only, Clinical types only)
+        if can_manage and esc.type in CLINICAL_TYPES:
             for file_storage in request.files.getlist("confidential_attachments"):
                 saved = save_uploaded_file(file_storage, confidential=True)
                 if saved:
