@@ -6,7 +6,7 @@
 <p style="color:#6b7a86;">Escalations where you are the Recruiter, Sales Rep, Compliance Specialist, Recruiter Manager, or Action To, currently in Open, Pending Approval, or Clinical Acknowledged status.</p>
 <div class="card">
   <table>
-    <thead><tr><th>ID</th><th>Candidate</th><th>Facility</th><th>Type</th><th>Status</th><th>Danger of Cancelling</th></tr></thead>
+    <thead><tr><th>ID</th><th>Candidate</th><th>Facility</th><th>Type</th><th>Status</th><th>Danger of Cancelling</th>{% if current_user.role == "Payroll" %}<th>Payroll Specialist Assigned</th>{% endif %}</tr></thead>
     <tbody>
       {% for e in escalations %}
       <tr onclick="window.location='{{ url_for('view_escalation', escalation_id=e.id) }}'" style="cursor:pointer;">
@@ -16,9 +16,10 @@
         <td>{{ e.type }}</td>
         <td>{{ b.status_badge(e.status) }}</td>
         <td>{{ e.danger_of_cancelling or '-' }}</td>
+        {% if current_user.role == "Payroll" %}<td>{{ e.payroll_specialist_assigned or '-' }}</td>{% endif %}
       </tr>
       {% else %}
-      <tr><td colspan="6" style="color:#6b7a86;">No open escalations assigned to you.</td></tr>
+      <tr><td colspan="{{ 7 if current_user.role == 'Payroll' else 6 }}" style="color:#6b7a86;">No open escalations assigned to you.</td></tr>
       {% endfor %}
     </tbody>
   </table>
