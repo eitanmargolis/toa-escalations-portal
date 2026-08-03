@@ -189,8 +189,8 @@
       </div>
 
       {% if can_manage %}
-      <div id="confidentialSectionWrapper" style="{{ '' if esc.type in clinical_types else 'display:none;' }}">
-      <div class="section-header">Confidential Information <span style="font-size:11px;font-weight:400;color:var(--brand-gray);">(Manager/Admin only, Clinical escalations only)</span></div>
+      <div id="confidentialSectionWrapper" style="{{ '' if confidential_visible else 'display:none;' }}">
+      <div class="section-header">Confidential Information <span style="font-size:11px;font-weight:400;color:var(--brand-gray);">(Admin/Director only)</span></div>
       <div class="form-grid">
         <div class="full"><label>Notes</label><textarea name="confidential_notes">{{ esc.confidential_notes or '' }}</textarea></div>
         <div class="full">
@@ -300,7 +300,9 @@ function computeCanEditStatus(type) {
 }
 const TYPE_CONTRACT = "Contract";
 const TYPE_PRESTART = "Pre-Start";
-const REQUIRED_SUBTYPE_TYPES = [TYPE_COMPLIANCE, TYPE_PAYROLL, TYPE_CONTRACT];
+const TYPE_PERSONAL = "Personal (On Assignment)";
+const SUBTYPE_PRESTART_CLINICAL_CANCEL = "Clinical/Cancel";
+const REQUIRED_SUBTYPE_TYPES = [TYPE_COMPLIANCE, TYPE_PAYROLL, TYPE_CONTRACT, TYPE_PRESTART, TYPE_PERSONAL];
 const DISCUSSED_NOT_REQUIRED_TYPES = [TYPE_COMPLIANCE, TYPE_PAYROLL];
 // Item 3 (this batch): Payroll & Timekeeping Subtypes for which Sales Rep/AC
 // are removed from the page layout entirely. Must match SUBTYPES_BY_TYPE.
@@ -351,6 +353,10 @@ function syncSubtype(preserveCurrent) {
   const isCompliance = type === TYPE_COMPLIANCE;
   const isPayroll = type === TYPE_PAYROLL;
   const isPrestart = type === TYPE_PRESTART;
+  const isPersonal = type === TYPE_PERSONAL;
+  // Clinical Liaison field + DNR checkboxes are shown for the two Clinical
+  // types AND Personal (On Assignment).
+  const isDnrLiaisonApplicable = isClinical || isPersonal;
   const subtypeRequired = isClinical || REQUIRED_SUBTYPE_TYPES.includes(type);
   if (subtypeRequired) {
     subtypeWrapper.style.display = '';
@@ -374,8 +380,8 @@ function syncSubtype(preserveCurrent) {
   complianceManagerWrapper.style.display = (isCompliance || isPrestart) ? '' : 'none';
 
   syncPayrollVisibility();
-  clinicalLiaisonWrapper.style.display = isClinical ? '' : 'none';
-  if (confidentialSectionWrapper) confidentialSectionWrapper.style.display = isClinical ? '' : 'none';
+  clinicalLiaisonWrapper.style.display = isDnrLiaisonApplicable ? '' : 'none';
+  syncConfidentialVisibility();
 
   const discussedRequired = !DISCUSSED_NOT_REQUIRED_TYPES.includes(type);
   discussedRequiredMark.style.display = discussedRequired ? '' : 'none';
@@ -407,24 +413,37 @@ function syncSubtype(preserveCurrent) {
   syncSalesRepAcVisibility();
 
   [dnrFacilityWrapper, dnrMspWrapper, dnrHospitalWrapper].forEach(w => {
-    w.style.display = isClinical ? '' : 'none';
+    w.style.display = isDnrLiaisonApplicable ? '' : 'none';
   });
-  syncDnrVisibility(isClinical);
+  syncDnrVisibility(isDnrLiaisonApplicable);
 
   syncStatusOptions(type, preserveCurrent);
 }
 
-function syncDnrVisibility(isClinical) {
+function syncDnrVisibility(isDnrApplicable) {
   const pairs = [
     [document.getElementById('dnrFacilityCheck'), dnrFacilityNotesWrapper, document.getElementById('dnrFacilityRequiredMark')],
     [document.getElementById('dnrMspCheck'), dnrMspNotesWrapper, document.getElementById('dnrMspRequiredMark')],
     [document.getElementById('dnrHospitalCheck'), dnrHospitalNotesWrapper, document.getElementById('dnrHospitalRequiredMark')],
   ];
   pairs.forEach(([check, notesWrapper, mark]) => {
-    const show = isClinical && check.checked;
+    const show = isDnrApplicable && check.checked;
     notesWrapper.style.display = show ? '' : 'none';
     if (mark) mark.style.display = show ? '' : 'none';
   });
+}
+
+// Confidential Information section (Admin/Director only, rendered server-side
+// via can_manage - this only controls its visibility once already rendered):
+// Clinical types, Personal (On Assignment), and Pre-Start but only when its
+// Subtype is specifically "Clinical/Cancel".
+function syncConfidentialVisibility() {
+  if (!confidentialSectionWrapper) return;
+  const type = typeField.value;
+  const isClinical = CLINICAL_TYPES.includes(type);
+  const isPersonal = type === TYPE_PERSONAL;
+  const isPrestartClinicalCancel = type === TYPE_PRESTART && subtypeField.value === SUBTYPE_PRESTART_CLINICAL_CANCEL;
+  confidentialSectionWrapper.style.display = (isClinical || isPersonal || isPrestartClinicalCancel) ? '' : 'none';
 }
 
 // Items 2f/4d: restrict the Status dropdown's options to the selected Type's
@@ -450,7 +469,7 @@ function syncStatusOptions(type, preserveCurrent) {
 }
 
 ['dnrFacilityCheck', 'dnrMspCheck', 'dnrHospitalCheck'].forEach(id => {
-  document.getElementById(id).addEventListener('change', () => syncDnrVisibility(CLINICAL_TYPES.includes(typeField.value)));
+  document.getElementById(id).addEventListener('change', () => syncDnrVisibility(CLINICAL_TYPES.includes(typeField.value) || typeField.value === TYPE_PERSONAL));
 });
 
 function syncPayrollVisibility() {
@@ -482,6 +501,7 @@ typeField.addEventListener('change', () => syncSubtype(false));
 subtypeField.addEventListener('change', function() {
   syncPayrollVisibility();
   syncSalesRepAcVisibility();
+  syncConfidentialVisibility();
 });
 syncSubtype(true);
 

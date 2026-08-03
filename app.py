@@ -28,7 +28,8 @@ from models import (
     ESCALATION_TYPES, ALL_ESCALATION_TYPES_FOR_DISPLAY, RETIRED_ESCALATION_TYPES, CLINICAL_TYPES, SUBTYPES_BY_TYPE, YES_NO,
     STATUS_VALUES, OPEN_STATUSES, CLOSED_STATUSES, STATUS_VALUES_BY_TYPE,
     REQUIRED_SUBTYPE_TYPES, DISCUSSED_WITH_MANAGER_NOT_REQUIRED_TYPES,
-    TYPE_COMPLIANCE, TYPE_PAYROLL, TYPE_CONTRACT, TYPE_PRESTART,
+    TYPE_COMPLIANCE, TYPE_PAYROLL, TYPE_CONTRACT, TYPE_PRESTART, TYPE_PERSONAL,
+    SUBTYPE_PRESTART_CLINICAL_CANCEL, CLINICAL_LIAISON_DNR_TYPES,
     BEST_TIME_SLOTS, TIME_ZONES, REPORT_FIELDS,
 )
 from email_utils import (
@@ -296,6 +297,18 @@ def sales_rep_ac_hidden_for(esc_type, esc_subtype):
 
 def subtype_required_for_type(esc_type):
     return esc_type in CLINICAL_TYPES or esc_type in REQUIRED_SUBTYPE_TYPES
+
+
+def confidential_section_visible_for(esc_type, esc_subtype):
+    """Confidential Information section page-layout visibility (still gated
+    server-side to Admin/Director via can_manage at each call site). Shown
+    for the two Clinical types, Personal (On Assignment), and Pre-Start but
+    only when its Subtype is specifically 'Clinical/Cancel'."""
+    return (
+        esc_type in CLINICAL_TYPES
+        or esc_type == TYPE_PERSONAL
+        or (esc_type == TYPE_PRESTART and esc_subtype == SUBTYPE_PRESTART_CLINICAL_CANCEL)
+    )
 
 
 def discussed_with_manager_required_for_type(esc_type):
@@ -571,8 +584,8 @@ def new_escalation():
             best_time_to_call = None
             time_zone = None
 
-        # DNR fields - Clinical types only (item 1)
-        if esc_type in CLINICAL_TYPES:
+        # DNR fields - Clinical types and Personal (On Assignment) (item 1)
+        if esc_type in CLINICAL_LIAISON_DNR_TYPES:
             dnr_facility = bool(f.get("dnr_facility"))
             dnr_facility_notes = (f.get("dnr_facility_notes") or None) if dnr_facility else None
             dnr_msp = bool(f.get("dnr_msp"))
@@ -716,7 +729,8 @@ def new_escalation():
                 esc.payroll_specialist_id = payroll_team.id
 
         # Auto-set Clinical Liaison -> Lauren Redig for Clinical escalations
-        if esc.type in CLINICAL_TYPES and not esc.clinical_liaison_id:
+        # and Personal (On Assignment)
+        if esc.type in CLINICAL_LIAISON_DNR_TYPES and not esc.clinical_liaison_id:
             liaison = get_clinical_liaison_user()
             if liaison:
                 esc.clinical_liaison_id = liaison.id
@@ -749,7 +763,7 @@ def new_escalation():
         recipients = {esc.recruiter, esc.sales_rep, esc.ac, esc.compliance_specialist, esc.recruiter_manager}
         if payroll_applicable:
             recipients.add(esc.payroll_specialist)
-        if esc.type in CLINICAL_TYPES:
+        if esc.type in CLINICAL_LIAISON_DNR_TYPES:
             recipients.add(esc.clinical_liaison)
         for u in recipients:
             if u:
@@ -1006,7 +1020,7 @@ def view_escalation(escalation_id):
         else:
             new_we_date = new_date_to_be_paid = None
 
-        if new_type in CLINICAL_TYPES:
+        if new_type in CLINICAL_LIAISON_DNR_TYPES:
             new_dnr_facility = bool(f.get("dnr_facility"))
             new_dnr_facility_notes = (f.get("dnr_facility_notes") or None) if new_dnr_facility else None
             new_dnr_msp = bool(f.get("dnr_msp"))
@@ -1080,10 +1094,11 @@ def view_escalation(escalation_id):
         esc.is_traveler_canceled = f.get("is_traveler_canceled") or None
 
         # Confidential Information - Manager/Admin (Director/Admin) only, AND
-        # only for Clinical - Traveler/Client Initiated escalations. Ignored
-        # silently (not an error) for anyone/anything else, matching the
-        # section's page-layout visibility.
-        if can_manage and esc.type in CLINICAL_TYPES and "confidential_notes" in f:
+        # only for Clinical - Traveler/Client Initiated, Personal (On
+        # Assignment), and Pre-Start (Subtype "Clinical/Cancel" only)
+        # escalations. Ignored silently (not an error) for anyone/anything
+        # else, matching the section's page-layout visibility.
+        if can_manage and confidential_section_visible_for(esc.type, esc.subtype) and "confidential_notes" in f:
             esc.confidential_notes = f.get("confidential_notes") or None
 
         # Auto-set Payroll Specialist -> "Payroll Team" user
@@ -1093,7 +1108,8 @@ def view_escalation(escalation_id):
                 esc.payroll_specialist_id = payroll_team.id
 
         # Auto-set Clinical Liaison -> Lauren Redig for Clinical escalations
-        if esc.type in CLINICAL_TYPES and not esc.clinical_liaison_id:
+        # and Personal (On Assignment)
+        if esc.type in CLINICAL_LIAISON_DNR_TYPES and not esc.clinical_liaison_id:
             liaison = get_clinical_liaison_user()
             if liaison:
                 esc.clinical_liaison_id = liaison.id
@@ -1113,8 +1129,9 @@ def view_escalation(escalation_id):
 
         db.session.commit()
 
-        # Confidential attachment upload (Manager/Admin only, Clinical types only)
-        if can_manage and esc.type in CLINICAL_TYPES:
+        # Confidential attachment upload (Manager/Admin only, matching the
+        # Confidential Information section's page-layout visibility)
+        if can_manage and confidential_section_visible_for(esc.type, esc.subtype):
             for file_storage in request.files.getlist("confidential_attachments"):
                 saved = save_uploaded_file(file_storage, confidential=True)
                 if saved:
@@ -1146,7 +1163,7 @@ def view_escalation(escalation_id):
             status_recipients = {esc.recruiter, esc.sales_rep, esc.ac, esc.compliance_specialist}
             if payroll_applicable:
                 status_recipients.add(esc.payroll_specialist)
-            if esc.type in CLINICAL_TYPES:
+            if esc.type in CLINICAL_LIAISON_DNR_TYPES:
                 status_recipients.add(esc.clinical_liaison)
             for u in status_recipients:
                 if u:
@@ -1170,6 +1187,7 @@ def view_escalation(escalation_id):
         # live <select> silently defaulting to some other value on save.
         types=ESCALATION_TYPES, retired_types=RETIRED_ESCALATION_TYPES,
         clinical_types=CLINICAL_TYPES, subtypes_by_type=SUBTYPES_BY_TYPE,
+        confidential_visible=confidential_section_visible_for(esc.type, esc.subtype),
         yes_no=YES_NO, statuses=status_options_for_type(esc.type, esc.status),
         status_values_by_type=STATUS_VALUES_BY_TYPE, all_statuses=STATUS_VALUES,
         best_times=BEST_TIME_SLOTS, time_zones=TIME_ZONES,

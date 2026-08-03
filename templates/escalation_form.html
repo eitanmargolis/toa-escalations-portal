@@ -220,7 +220,8 @@ const TYPE_COMPLIANCE = "Compliance & Credentialing";
 const TYPE_PAYROLL = "Payroll & Timekeeping";
 const TYPE_CONTRACT = "Contract";
 const TYPE_PRESTART = "Pre-Start";
-const REQUIRED_SUBTYPE_TYPES = [TYPE_COMPLIANCE, TYPE_PAYROLL, TYPE_CONTRACT];
+const TYPE_PERSONAL = "Personal (On Assignment)";
+const REQUIRED_SUBTYPE_TYPES = [TYPE_COMPLIANCE, TYPE_PAYROLL, TYPE_CONTRACT, TYPE_PRESTART, TYPE_PERSONAL];
 const DISCUSSED_NOT_REQUIRED_TYPES = [TYPE_COMPLIANCE, TYPE_PAYROLL];
 // Item 3 (this batch): Payroll & Timekeeping Subtypes for which Sales Rep/AC
 // are removed from the page layout entirely. Must match SUBTYPES_BY_TYPE.
@@ -271,6 +272,10 @@ function syncSubtype() {
   const isCompliance = type === TYPE_COMPLIANCE;
   const isPayroll = type === TYPE_PAYROLL;
   const isPrestart = type === TYPE_PRESTART;
+  const isPersonal = type === TYPE_PERSONAL;
+  // Clinical Liaison field + DNR checkboxes are shown for the two Clinical
+  // types AND Personal (On Assignment).
+  const isDnrLiaisonApplicable = isClinical || isPersonal;
   const subtypeRequired = isClinical || REQUIRED_SUBTYPE_TYPES.includes(type);
   if (subtypeRequired) {
     subtypeWrapper.style.display = '';
@@ -301,8 +306,8 @@ function syncSubtype() {
   // Payroll Specialist section (dropdown + free-text Assigned box) - item 7c
   syncPayrollVisibility();
 
-  // Clinical Liaison field only shown for Clinical types
-  clinicalLiaisonWrapper.style.display = isClinical ? '' : 'none';
+  // Clinical Liaison field shown for Clinical types and Personal (On Assignment)
+  clinicalLiaisonWrapper.style.display = isDnrLiaisonApplicable ? '' : 'none';
 
   // Discussed with Coast Manager - not required for Compliance & Credentialing / Payroll & Timekeeping
   const discussedRequired = !DISCUSSED_NOT_REQUIRED_TYPES.includes(type);
@@ -336,22 +341,23 @@ function syncSubtype() {
   // with Subtype Paycheck Error / Late / Reimbursements only.
   syncSalesRepAcVisibility();
 
-  // DNR fields (item 1) - Clinical types only; the *_notes wrapper additionally
-  // depends on whether its checkbox is currently checked (handled in syncDnrVisibility).
+  // DNR fields (item 1) - Clinical types and Personal (On Assignment); the
+  // *_notes wrapper additionally depends on whether its checkbox is
+  // currently checked (handled in syncDnrVisibility).
   [dnrFacilityWrapper, dnrMspWrapper, dnrHospitalWrapper].forEach(w => {
-    w.style.display = isClinical ? '' : 'none';
+    w.style.display = isDnrLiaisonApplicable ? '' : 'none';
   });
-  syncDnrVisibility(isClinical);
+  syncDnrVisibility(isDnrLiaisonApplicable);
 }
 
-function syncDnrVisibility(isClinical) {
+function syncDnrVisibility(isDnrApplicable) {
   const pairs = [
     [document.getElementById('dnrFacilityCheck'), dnrFacilityNotesWrapper, document.getElementById('dnrFacilityRequiredMark')],
     [document.getElementById('dnrMspCheck'), dnrMspNotesWrapper, document.getElementById('dnrMspRequiredMark')],
     [document.getElementById('dnrHospitalCheck'), dnrHospitalNotesWrapper, document.getElementById('dnrHospitalRequiredMark')],
   ];
   pairs.forEach(([check, notesWrapper, mark]) => {
-    const show = isClinical && check.checked;
+    const show = isDnrApplicable && check.checked;
     notesWrapper.style.display = show ? '' : 'none';
     if (mark) mark.style.display = show ? '' : 'none';
   });
@@ -395,7 +401,7 @@ salesRepField.addEventListener('change', function() {
 
 // DNR checkbox -> conditionally-required notes field (item 1)
 ['dnrFacilityCheck', 'dnrMspCheck', 'dnrHospitalCheck'].forEach(id => {
-  document.getElementById(id).addEventListener('change', () => syncDnrVisibility(CLINICAL_TYPES.includes(typeField.value)));
+  document.getElementById(id).addEventListener('change', () => syncDnrVisibility(CLINICAL_TYPES.includes(typeField.value) || typeField.value === TYPE_PERSONAL));
 });
 
 // --- Rich text editor (contenteditable) sync for Details/What Happened ---

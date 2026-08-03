@@ -59,7 +59,7 @@ ESCALATION_TYPES = [
     "Clinical - Client Initiated",
     "Compliance & Credentialing",
     "Payroll & Timekeeping",
-    "Personal (Yellow Flag)",
+    "Personal (On Assignment)",
     "Pre-Start",
     "Contract",
 ]
@@ -77,10 +77,16 @@ TYPE_COMPLIANCE = "Compliance & Credentialing"
 TYPE_PAYROLL = "Payroll & Timekeeping"
 TYPE_CONTRACT = "Contract"
 TYPE_PRESTART = "Pre-Start"
+TYPE_PERSONAL = "Personal (On Assignment)"  # formerly "Personal (Yellow Flag)"
+
+# Pre-Start's Subtype value that additionally unlocks the Confidential
+# Information section for that type (Admin/Director only - see
+# confidential_section_visible_for() in app.py).
+SUBTYPE_PRESTART_CLINICAL_CANCEL = "Clinical/Cancel"
 
 SUBTYPES_BY_TYPE = {
     "Clinical - Traveler Initiated": [
-        "Personal", "Unit Concern", "Patient Care", "Pre-Start Cancel", "Relias Coaching", "Other",
+        "Unit Concern", "Patient Care", "Relias Coaching", "Other",
     ],
     "Clinical - Client Initiated": [
         "Patient Care", "Professionalism", "Attendance", "Other",
@@ -94,10 +100,25 @@ SUBTYPES_BY_TYPE = {
     TYPE_CONTRACT: [
         "Shift/Scheduling", "Pay Changes",
     ],
+    TYPE_PRESTART: [
+        SUBTYPE_PRESTART_CLINICAL_CANCEL, "Other",
+    ],
+    TYPE_PERSONAL: [
+        "Cancel (clinical)", "Other",
+    ],
 }
 
 # Types (besides Clinical) for which Subtype is a required field.
-REQUIRED_SUBTYPE_TYPES = [TYPE_COMPLIANCE, TYPE_PAYROLL, TYPE_CONTRACT]
+REQUIRED_SUBTYPE_TYPES = [TYPE_COMPLIANCE, TYPE_PAYROLL, TYPE_CONTRACT, TYPE_PRESTART, TYPE_PERSONAL]
+
+# Types (besides the two Clinical types) whose page layout also includes the
+# Clinical Liaison field (Related Users), the DNR checkboxes/notes
+# (Resolution), and - subject to the Admin/Director-only role check - the
+# Confidential Information section. Pre-Start is handled separately (its
+# Confidential section additionally depends on Subtype - see
+# confidential_section_visible_for() in app.py) since it doesn't get the
+# Clinical Liaison field or DNR checkboxes.
+CLINICAL_LIAISON_DNR_TYPES = CLINICAL_TYPES + [TYPE_PERSONAL]
 
 # Types for which "Discussed with Coast Manager?" is NOT a required field
 # (it's required for every other type by default).
