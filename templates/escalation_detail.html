@@ -247,8 +247,15 @@
         </div>
       </div>
 
-      <p style="margin-top:20px;"><button class="btn" type="submit">Save Changes</button></p>
+      <p style="margin-top:20px;">
+        <button class="btn" type="submit">Save Changes</button>
+      </p>
     </form>
+    {% if can_manage %}
+    <form method="post" action="{{ url_for('delete_escalation', escalation_id=esc.id) }}" onsubmit="return confirm('Delete Escalation #{{ esc.id }}? This cannot be undone.');" style="margin-top:-12px;">
+      <button class="btn btn-secondary" type="submit">Delete Escalation</button>
+    </form>
+    {% endif %}
   </div>
 
   <div style="flex:1; min-width:320px;">

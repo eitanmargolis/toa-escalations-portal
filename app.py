@@ -905,6 +905,25 @@ def parse_mentions(body, users):
     return mentioned
 
 
+@app.route("/escalations/<int:escalation_id>/delete", methods=["POST"])
+@login_required
+@manager_or_admin_required
+def delete_escalation(escalation_id):
+    """Admin/Director only (manager_or_admin_required - see its definition
+    above for why "Manager" the scoped standard-tier role is intentionally
+    excluded here). Comments and Attachments cascade-delete automatically via
+    their relationship() cascade="all, delete-orphan" on Escalation (see
+    models.py), but Mention rows aren't covered by that - they carry their
+    own direct escalation_id foreign key with no ORM-level cascade, so
+    they're cleared out manually first to avoid an IntegrityError."""
+    esc = db.session.get(Escalation, escalation_id) or abort(404)
+    Mention.query.filter_by(escalation_id=esc.id).delete()
+    db.session.delete(esc)
+    db.session.commit()
+    flash(f"Escalation #{escalation_id} deleted.", "success")
+    return redirect(url_for("my_open_escalations"))
+
+
 @app.route("/escalations/<int:escalation_id>", methods=["GET", "POST"])
 @login_required
 def view_escalation(escalation_id):
