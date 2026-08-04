@@ -220,28 +220,38 @@ def save_uploaded_file(file_storage, confidential=False):
     return original_name, stored_name, "local"
 
 
-def serve_stored_file(stored_value, storage_type, filename):
-    """Redirect/serve a previously-uploaded file regardless of where it lives."""
+def serve_stored_file(stored_value, storage_type, filename, force_download=False):
+    """Redirect/serve a previously-uploaded file regardless of where it lives.
+
+    force_download=False (the default, used for clicking the attachment name
+    itself) serves/redirects the file WITHOUT a Content-Disposition:
+    attachment header, so browsers preview types they can render natively
+    (PDF, images, text) inline in a new tab instead of always saving to disk.
+    force_download=True (the separate "Download" link) forces a save-to-disk
+    prompt under the original filename, same as the previous behavior."""
     if storage_type in ("cloudinary_public", "cloudinary_authenticated"):
-        # Legacy records saved before this fix stored a full pre-built URL
-        # (no forced filename) instead of a bare public_id - fall back to a
-        # plain redirect for those so old links don't break, even though the
-        # downloaded filename will still be the random public_id for them.
+        # Legacy records saved before the filename fix stored a full
+        # pre-built URL (no forced filename) instead of a bare public_id -
+        # fall back to a plain redirect for those so old links don't break,
+        # even though preview/download will use the random public_id as the
+        # filename for them.
         if stored_value.startswith("http"):
             return redirect(stored_value)
-        # fl_attachment forces a Content-Disposition header so the browser
-        # downloads under the ORIGINAL filename (Cloudinary auto-appends the
-        # correct extension) instead of the random public_id.
-        attachment_name = os.path.splitext(filename)[0] or "file"
-        url, _ = cloudinary.utils.cloudinary_url(
-            stored_value, resource_type="raw",
+        url_kwargs = dict(
+            resource_type="raw",
             type="authenticated" if storage_type == "cloudinary_authenticated" else "upload",
             sign_url=(storage_type == "cloudinary_authenticated"), secure=True,
-            flags=f"attachment:{attachment_name}",
         )
+        if force_download:
+            # fl_attachment forces a Content-Disposition header so the
+            # browser downloads under the ORIGINAL filename (Cloudinary
+            # auto-appends the correct extension) instead of previewing.
+            attachment_name = os.path.splitext(filename)[0] or "file"
+            url_kwargs["flags"] = f"attachment:{attachment_name}"
+        url, _ = cloudinary.utils.cloudinary_url(stored_value, **url_kwargs)
         return redirect(url)
     return send_from_directory(app.config["UPLOAD_FOLDER"], stored_value,
-                                as_attachment=True, download_name=filename)
+                                as_attachment=force_download, download_name=filename)
 
 
 def recruiter_options():
@@ -310,9 +320,9 @@ def payroll_specialist_applicable(esc_type, esc_subtype):
 
 def compliance_specialist_hidden_for_type(esc_type):
     """Compliance Specialist (the top-level field) is hidden entirely for
-    Clinical types (pre-existing behavior) and, as of item 4e, for
-    Payroll & Timekeeping too."""
-    return esc_type in CLINICAL_TYPES or esc_type == TYPE_PAYROLL
+    Clinical types (pre-existing behavior), Payroll & Timekeeping (item 4e),
+    and Contract."""
+    return esc_type in CLINICAL_TYPES or esc_type in (TYPE_PAYROLL, TYPE_CONTRACT)
 
 
 def compliance_manager_applicable(esc_type):
@@ -1318,7 +1328,11 @@ def download_attachment(attachment_id):
     attachment = db.session.get(Attachment, attachment_id) or abort(404)
     if attachment.is_confidential and not manager_or_admin(current_user):
         abort(403)
-    return serve_stored_file(attachment.stored_name, attachment.storage_type or "local", attachment.filename)
+    # Clicking the attachment's name previews it (opens in a new tab, inline
+    # for anything the browser can render); the separate "Download" link adds
+    # ?download=1 to force an actual save-to-disk prompt instead.
+    force_download = request.args.get("download") == "1"
+    return serve_stored_file(attachment.stored_name, attachment.storage_type or "local", attachment.filename, force_download=force_download)
 
 
 @app.route("/comments/<int:comment_id>/attachment")
@@ -1327,7 +1341,8 @@ def download_comment_attachment(comment_id):
     comment = db.session.get(Comment, comment_id) or abort(404)
     if not comment.attachment_stored_name:
         abort(404)
-    return serve_stored_file(comment.attachment_stored_name, comment.attachment_storage_type or "local", comment.attachment_filename)
+    force_download = request.args.get("download") == "1"
+    return serve_stored_file(comment.attachment_stored_name, comment.attachment_storage_type or "local", comment.attachment_filename, force_download=force_download)
 
 
 # ---------------------------------------------------------------------------

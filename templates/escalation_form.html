@@ -292,7 +292,7 @@ function syncSubtype() {
 
   // Compliance Specialist is removed from the page entirely for Clinical types
   // and Payroll & Timekeeping (item 4e); not required (but shown) otherwise.
-  const complianceHidden = isClinical || isPayroll;
+  const complianceHidden = isClinical || isPayroll || type === TYPE_CONTRACT;
   if (complianceHidden) {
     complianceWrapper.style.display = 'none';
     complianceField.required = false;

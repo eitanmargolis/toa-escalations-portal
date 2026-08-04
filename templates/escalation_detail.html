@@ -179,7 +179,8 @@
         <div class="full">
           <label>Attachments</label>
           {% for a in esc.attachments if not a.is_confidential %}
-            <p style="margin:2px 0;"><a href="{{ url_for('download_attachment', attachment_id=a.id) }}">{{ a.filename }}</a>
+            <p style="margin:2px 0;"><a href="{{ url_for('download_attachment', attachment_id=a.id) }}" target="_blank" rel="noopener">{{ a.filename }}</a>
+            <a href="{{ url_for('download_attachment', attachment_id=a.id, download=1) }}" style="font-size:12px;margin-left:6px;">Download</a>
             <span style="color:var(--brand-gray);font-size:12px;"> &middot; uploaded by {{ a.uploaded_by.full_name if a.uploaded_by }}</span></p>
           {% else %}
             <p style="color:var(--brand-gray);font-size:13px;">No documents attached yet.</p>
@@ -196,7 +197,8 @@
         <div class="full">
           <label>Confidential Attachments</label>
           {% for a in esc.attachments if a.is_confidential %}
-            <p style="margin:2px 0;"><a href="{{ url_for('download_attachment', attachment_id=a.id) }}">{{ a.filename }}</a>
+            <p style="margin:2px 0;"><a href="{{ url_for('download_attachment', attachment_id=a.id) }}" target="_blank" rel="noopener">{{ a.filename }}</a>
+            <a href="{{ url_for('download_attachment', attachment_id=a.id, download=1) }}" style="font-size:12px;margin-left:6px;">Download</a>
             <span style="color:var(--brand-gray);font-size:12px;"> &middot; uploaded by {{ a.uploaded_by.full_name if a.uploaded_by }}</span></p>
           {% else %}
             <p style="color:var(--brand-gray);font-size:13px;">No confidential documents attached yet.</p>
@@ -267,7 +269,10 @@
             <div class="meta"><span class="comment-author">{{ c.user.full_name }}</span> &middot; <span class="comment-time" data-utc="{{ c.created_at.isoformat() }}Z">{{ c.created_at.strftime('%b %d, %Y %I:%M %p') }} UTC</span></div>
             <div>{{ c.body|safe }}</div>
             {% if c.attachment_filename %}
-              <div style="margin-top:4px;"><a href="{{ url_for('download_comment_attachment', comment_id=c.id) }}">📎 {{ c.attachment_filename }}</a></div>
+              <div style="margin-top:4px;">
+                <a href="{{ url_for('download_comment_attachment', comment_id=c.id) }}" target="_blank" rel="noopener">📎 {{ c.attachment_filename }}</a>
+                <a href="{{ url_for('download_comment_attachment', comment_id=c.id, download=1) }}" style="font-size:12px;margin-left:6px;">Download</a>
+              </div>
             {% endif %}
           </div>
         {% else %}
@@ -377,7 +382,7 @@ function syncSubtype(preserveCurrent) {
     subtypeField.innerHTML = '';
   }
 
-  const complianceHidden = isClinical || isPayroll;
+  const complianceHidden = isClinical || isPayroll || type === TYPE_CONTRACT;
   if (complianceHidden) {
     complianceWrapper.style.display = 'none';
     if (complianceField) complianceField.value = '';
