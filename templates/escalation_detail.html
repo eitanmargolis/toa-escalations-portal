@@ -308,7 +308,7 @@ function computeCanEditStatus(type) {
 const TYPE_CONTRACT = "Contract";
 const TYPE_PRESTART = "Pre-Start";
 const TYPE_PERSONAL = "Personal (On Assignment)";
-const SUBTYPE_PRESTART_CLINICAL_CANCEL = "Clinical/Cancel";
+const SUBTYPE_CLINICAL_CANCEL = "Clinical/Cancel";
 const REQUIRED_SUBTYPE_TYPES = [TYPE_COMPLIANCE, TYPE_PAYROLL, TYPE_CONTRACT, TYPE_PRESTART, TYPE_PERSONAL];
 const DISCUSSED_NOT_REQUIRED_TYPES = [TYPE_COMPLIANCE, TYPE_PAYROLL];
 // Item 3 (this batch): Payroll & Timekeeping Subtypes for which Sales Rep/AC
@@ -449,7 +449,7 @@ function syncConfidentialVisibility() {
   const type = typeField.value;
   const isClinical = CLINICAL_TYPES.includes(type);
   const isPersonal = type === TYPE_PERSONAL;
-  const isPrestartClinicalCancel = type === TYPE_PRESTART && subtypeField.value === SUBTYPE_PRESTART_CLINICAL_CANCEL;
+  const isPrestartClinicalCancel = type === TYPE_PRESTART && subtypeField.value === SUBTYPE_CLINICAL_CANCEL;
   confidentialSectionWrapper.style.display = (isClinical || isPersonal || isPrestartClinicalCancel) ? '' : 'none';
 }
 

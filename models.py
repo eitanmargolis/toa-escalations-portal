@@ -79,10 +79,12 @@ TYPE_CONTRACT = "Contract"
 TYPE_PRESTART = "Pre-Start"
 TYPE_PERSONAL = "Personal (On Assignment)"  # formerly "Personal (Yellow Flag)"
 
-# Pre-Start's Subtype value that additionally unlocks the Confidential
-# Information section for that type (Admin/Director only - see
-# confidential_section_visible_for() in app.py).
-SUBTYPE_PRESTART_CLINICAL_CANCEL = "Clinical/Cancel"
+# Shared Subtype value for both Pre-Start and Personal (On Assignment). For
+# Pre-Start specifically, selecting this value additionally unlocks the
+# Confidential Information section for that record (Admin/Director only -
+# see confidential_section_visible_for() in app.py); Personal (On Assignment)
+# unlocks that section regardless of which Subtype is selected.
+SUBTYPE_CLINICAL_CANCEL = "Clinical/Cancel"
 
 SUBTYPES_BY_TYPE = {
     "Clinical - Traveler Initiated": [
@@ -101,10 +103,10 @@ SUBTYPES_BY_TYPE = {
         "Shift/Scheduling", "Pay Changes",
     ],
     TYPE_PRESTART: [
-        SUBTYPE_PRESTART_CLINICAL_CANCEL, "Other",
+        SUBTYPE_CLINICAL_CANCEL, "Other",
     ],
     TYPE_PERSONAL: [
-        "Cancel (clinical)", "Other",
+        SUBTYPE_CLINICAL_CANCEL, "Other",
     ],
 }
 

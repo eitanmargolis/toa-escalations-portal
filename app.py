@@ -30,7 +30,7 @@ from models import (
     STATUS_VALUES, OPEN_STATUSES, CLOSED_STATUSES, STATUS_VALUES_BY_TYPE,
     REQUIRED_SUBTYPE_TYPES, DISCUSSED_WITH_MANAGER_NOT_REQUIRED_TYPES,
     TYPE_COMPLIANCE, TYPE_PAYROLL, TYPE_CONTRACT, TYPE_PRESTART, TYPE_PERSONAL,
-    SUBTYPE_PRESTART_CLINICAL_CANCEL, CLINICAL_LIAISON_DNR_TYPES,
+    SUBTYPE_CLINICAL_CANCEL, CLINICAL_LIAISON_DNR_TYPES,
     BEST_TIME_SLOTS, TIME_ZONES, REPORT_FIELDS,
 )
 from email_utils import (
@@ -179,10 +179,15 @@ def save_uploaded_file(file_storage, confidential=False):
             file_storage, resource_type="raw", public_id=public_id,
             type=upload_type, use_filename=False, unique_filename=False,
         )
-        if confidential:
-            return original_name, public_id, "cloudinary_authenticated"
-        url, _ = cloudinary.utils.cloudinary_url(public_id, resource_type="raw", type="upload", secure=True)
-        return original_name, url, "cloudinary_public"
+        # Store the bare public_id (not a pre-built URL) for both branches -
+        # serve_stored_file() below builds the actual download URL fresh each
+        # time, using the fl_attachment flag so the browser downloads the
+        # file under its ORIGINAL filename instead of the random public_id
+        # (Cloudinary raw uploads otherwise deliver/download using the
+        # public_id + auto-detected extension, e.g. "3f9a1c2b8e.pdf" instead
+        # of "Contract.pdf" - a plain redirect straight to the Cloudinary URL
+        # can't fix this after the fact, it has to be requested this way).
+        return original_name, public_id, "cloudinary_authenticated" if confidential else "cloudinary_public"
 
     stored_name = f"{uuid.uuid4().hex}_{original_name}"
     file_storage.save(os.path.join(app.config["UPLOAD_FOLDER"], stored_name))
@@ -191,11 +196,22 @@ def save_uploaded_file(file_storage, confidential=False):
 
 def serve_stored_file(stored_value, storage_type, filename):
     """Redirect/serve a previously-uploaded file regardless of where it lives."""
-    if storage_type == "cloudinary_public":
-        return redirect(stored_value)
-    if storage_type == "cloudinary_authenticated":
+    if storage_type in ("cloudinary_public", "cloudinary_authenticated"):
+        # Legacy records saved before this fix stored a full pre-built URL
+        # (no forced filename) instead of a bare public_id - fall back to a
+        # plain redirect for those so old links don't break, even though the
+        # downloaded filename will still be the random public_id for them.
+        if stored_value.startswith("http"):
+            return redirect(stored_value)
+        # fl_attachment forces a Content-Disposition header so the browser
+        # downloads under the ORIGINAL filename (Cloudinary auto-appends the
+        # correct extension) instead of the random public_id.
+        attachment_name = os.path.splitext(filename)[0] or "file"
         url, _ = cloudinary.utils.cloudinary_url(
-            stored_value, resource_type="raw", type="authenticated", sign_url=True, secure=True
+            stored_value, resource_type="raw",
+            type="authenticated" if storage_type == "cloudinary_authenticated" else "upload",
+            sign_url=(storage_type == "cloudinary_authenticated"), secure=True,
+            flags=f"attachment:{attachment_name}",
         )
         return redirect(url)
     return send_from_directory(app.config["UPLOAD_FOLDER"], stored_value,
@@ -308,7 +324,7 @@ def confidential_section_visible_for(esc_type, esc_subtype):
     return (
         esc_type in CLINICAL_TYPES
         or esc_type == TYPE_PERSONAL
-        or (esc_type == TYPE_PRESTART and esc_subtype == SUBTYPE_PRESTART_CLINICAL_CANCEL)
+        or (esc_type == TYPE_PRESTART and esc_subtype == SUBTYPE_CLINICAL_CANCEL)
     )
 
 
