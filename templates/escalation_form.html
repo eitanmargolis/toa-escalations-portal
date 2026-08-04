@@ -3,6 +3,7 @@
 {% block content %}
 <h1>Create an Escalation</h1>
 <form method="post" class="card" enctype="multipart/form-data">
+  <input type="hidden" name="form_token" value="{{ form_token }}">
   <div class="section-header">Information</div>
   <div class="form-grid">
     <div>

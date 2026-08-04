@@ -102,6 +102,32 @@ def admin_required(fn):
     return wrapper
 
 
+def issue_form_token(session_key):
+    """Generate a fresh one-time submission token, store it in the session,
+    and return it for embedding in a hidden form field. Server-side backstop
+    against duplicate record creation from repeated/rapid clicks on a submit
+    button, browser back-button + resubmit, or any case where the
+    client-side "disable the button on submit" JS doesn't get a chance to
+    run (e.g. a slow multipart file upload where the click lands before the
+    page has fully finished loading its scripts)."""
+    token = secrets.token_hex(16)
+    session[session_key] = token
+    return token
+
+
+def consume_form_token(session_key, submitted_token):
+    """Returns True exactly once per issue_form_token() call for that key -
+    the first POST carrying the current token consumes (invalidates) it, so
+    any further submission of that same rendered form (duplicate click,
+    stale back-button page, etc.) fails this check instead of creating a
+    second record."""
+    expected = session.get(session_key)
+    if not expected or not submitted_token or submitted_token != expected:
+        return False
+    session.pop(session_key, None)
+    return True
+
+
 def manager_or_admin(user):
     # "Director" carries the old manager-tier permission set (renamed from
     # "Manager" in item 11). The NEW scoped "Manager" role added in this
@@ -560,10 +586,19 @@ def new_escalation():
                                 all_users=all_users,
                                 types=ESCALATION_TYPES, clinical_types=CLINICAL_TYPES, subtypes_by_type=SUBTYPES_BY_TYPE,
                                 yes_no=YES_NO, statuses=STATUS_VALUES,
+                                form_token=issue_form_token("new_escalation_token"),
                                 best_times=BEST_TIME_SLOTS, time_zones=TIME_ZONES, mode="create")
 
     if request.method == "POST":
         f = request.form
+        # Server-side backstop against duplicate escalations from repeated
+        # clicks on Create Escalation (see issue_form_token() above) - fires
+        # before any other validation, so a duplicate submission is rejected
+        # outright rather than silently falling through to create a second
+        # record.
+        if not consume_form_token("new_escalation_token", f.get("form_token")):
+            flash("It looks like this escalation was already submitted. Check My Open Escalations - if you don't see it, please try creating it again.", "error")
+            return redirect(url_for("my_open_escalations"))
         esc_type = f.get("type")
 
         subtype = f.get("subtype") or None
@@ -800,6 +835,7 @@ def new_escalation():
                             all_users=all_users,
                             types=ESCALATION_TYPES, clinical_types=CLINICAL_TYPES, subtypes_by_type=SUBTYPES_BY_TYPE,
                             yes_no=YES_NO, statuses=STATUS_VALUES,
+                            form_token=issue_form_token("new_escalation_token"),
                             best_times=BEST_TIME_SLOTS, time_zones=TIME_ZONES, mode="create")
 
 
