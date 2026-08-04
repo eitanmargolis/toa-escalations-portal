@@ -181,6 +181,22 @@ def sanitize_html(raw_html):
     return cleaned.strip() or None
 
 
+# Extensions Cloudinary can preview inline (correct Content-Type, in-browser
+# rendering) when uploaded under resource_type="image" - Cloudinary treats
+# PDFs as an "image" asset (each page is renderable), same as true images.
+# Anything else (Word docs, spreadsheets, plain text, zip, etc.) uploads
+# under resource_type="raw" instead - browsers can't render those inline
+# regardless, so raw's generic handling is fine/expected for them.
+CLOUDINARY_PREVIEWABLE_EXTENSIONS = {
+    ".pdf", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg",
+}
+
+
+def cloudinary_resource_type_for(filename):
+    ext = os.path.splitext(filename or "")[1].lower()
+    return "image" if ext in CLOUDINARY_PREVIEWABLE_EXTENSIONS else "raw"
+
+
 def save_uploaded_file(file_storage, confidential=False):
     """Save an uploaded werkzeug FileStorage.
 
@@ -201,8 +217,13 @@ def save_uploaded_file(file_storage, confidential=False):
     if CLOUDINARY_CONFIGURED:
         public_id = f"toa-escalations/{uuid.uuid4().hex}"
         upload_type = "authenticated" if confidential else "upload"
+        # resource_type must match at serve time (see cloudinary_resource_type_for()
+        # in serve_stored_file()) - Cloudinary looks resources up by the exact
+        # combination of resource_type + type + public_id, so this determination
+        # has to be made identically (same original_name/extension) on both ends.
+        resource_type = cloudinary_resource_type_for(original_name)
         cloudinary.uploader.upload(
-            file_storage, resource_type="raw", public_id=public_id,
+            file_storage, resource_type=resource_type, public_id=public_id,
             type=upload_type, use_filename=False, unique_filename=False,
         )
         # Store the bare public_id (not a pre-built URL) for both branches -
@@ -238,7 +259,7 @@ def serve_stored_file(stored_value, storage_type, filename, force_download=False
         if stored_value.startswith("http"):
             return redirect(stored_value)
         url_kwargs = dict(
-            resource_type="raw",
+            resource_type=cloudinary_resource_type_for(filename),
             type="authenticated" if storage_type == "cloudinary_authenticated" else "upload",
             sign_url=(storage_type == "cloudinary_authenticated"), secure=True,
         )
