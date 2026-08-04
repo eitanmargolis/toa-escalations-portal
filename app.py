@@ -15,6 +15,7 @@ from flask_login import (
     LoginManager, login_user, logout_user, login_required, current_user
 )
 from sqlalchemy import inspect, text
+from sqlalchemy.exc import IntegrityError
 from werkzeug.utils import secure_filename
 import cloudinary
 import cloudinary.uploader
@@ -1461,7 +1462,23 @@ def delete_user(user_id):
         flash("You cannot delete your own account.", "error")
         return redirect(url_for("manage_users"))
     db.session.delete(user)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError:
+        # This user is still referenced by one or more Escalation records
+        # (as Recruiter, Sales Rep, Compliance Specialist, Clinical Liaison,
+        # etc.), a Comment, an Attachment, or a Mention. The database
+        # correctly refuses to delete them out from under that data - without
+        # this catch, that refusal previously surfaced as a raw 500 error.
+        db.session.rollback()
+        flash(
+            f"Can't delete {user.full_name}: they're still linked to one or more existing "
+            "escalations, comments, or attachments (e.g. as Recruiter, Sales Rep, Compliance "
+            "Specialist, or Clinical Liaison). Reassign those records to a different user first, "
+            "then try deleting again.",
+            "error",
+        )
+        return redirect(url_for("manage_users"))
     flash("User deleted.", "success")
     return redirect(url_for("manage_users"))
 
