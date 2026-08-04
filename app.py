@@ -403,11 +403,15 @@ def login():
         password = request.form.get("password", "")
         user = User.query.filter(db.func.lower(User.email) == email).first()
         if user and user.check_password(password):
-            login_user(user)
-            if is_safe_next_url(next_url):
-                return redirect(next_url)
-            return redirect(url_for("my_open_escalations"))
-        flash("Invalid email or password.", "error")
+            if not user.is_active:
+                flash("This account has been deactivated. Contact an Admin to reactivate it.", "error")
+            else:
+                login_user(user)
+                if is_safe_next_url(next_url):
+                    return redirect(next_url)
+                return redirect(url_for("my_open_escalations"))
+        else:
+            flash("Invalid email or password.", "error")
     return render_template("login.html")
 
 
@@ -1483,6 +1487,26 @@ def delete_user(user_id):
     return redirect(url_for("manage_users"))
 
 
+@app.route("/users/<int:user_id>/toggle-active", methods=["POST"])
+@login_required
+@admin_required
+def toggle_active_user(user_id):
+    """Deactivate/reactivate a user in place instead of deleting them -
+    deactivated users can't log in (see login()) but keep all their
+    historical escalation/comment/attachment associations intact, which is
+    what makes this the safe alternative to delete_user() for any user
+    who's already linked to existing records (delete_user() fails outright
+    for those - see its IntegrityError handling above)."""
+    user = db.session.get(User, user_id) or abort(404)
+    if user.id == current_user.id:
+        flash("You cannot deactivate your own account.", "error")
+        return redirect(url_for("manage_users"))
+    user.is_active = not user.is_active
+    db.session.commit()
+    flash(f"User {user.full_name} {'reactivated' if user.is_active else 'deactivated'}.", "success")
+    return redirect(url_for("manage_users"))
+
+
 # ---------------------------------------------------------------------------
 # CLI helper: seed an initial admin so the app is usable on first deploy
 # ---------------------------------------------------------------------------
@@ -1518,6 +1542,25 @@ def _sync_missing_columns():
                         conn.execute(text(f'ALTER TABLE "{table_name}" ADD COLUMN "{col.name}" {col_type}'))
                         conn.commit()
                     print(f"Auto-migration: added missing column {table_name}.{col.name}")
+                    # Backfill existing rows with the column's plain scalar
+                    # default (if it has one), e.g. Boolean flag columns like
+                    # User.is_active. Without this, a bare ADD COLUMN leaves
+                    # every pre-existing row NULL for the new column, which
+                    # Python code checking truthiness (e.g. "if not
+                    # user.is_active") would silently treat as False - locking
+                    # out every existing user the moment such a column is added.
+                    default_arg = getattr(col.default, "arg", None) if col.default is not None else None
+                    if default_arg is not None and not callable(default_arg):
+                        try:
+                            with db.engine.connect() as conn:
+                                conn.execute(
+                                    text(f'UPDATE "{table_name}" SET "{col.name}" = :default_val WHERE "{col.name}" IS NULL'),
+                                    {"default_val": default_arg},
+                                )
+                                conn.commit()
+                            print(f"Auto-migration: backfilled {table_name}.{col.name} to default {default_arg!r} for existing rows")
+                        except Exception as exc:  # noqa: BLE001
+                            print(f"Auto-migration: could not backfill {table_name}.{col.name}: {exc}")
                 except Exception as exc:  # noqa: BLE001
                     print(f"Auto-migration: could not add column {table_name}.{col.name}: {exc}")
             else:

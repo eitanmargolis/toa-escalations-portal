@@ -228,6 +228,16 @@ class User(UserMixin, db.Model):
     email = db.Column(db.String(255), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=True)
     role = db.Column(db.String(30), nullable=False, default="Recruiter")  # Admin / Director / Manager / Recruiter / Account Manager / Compliance Specialist / Payroll / Compliance / AC
+
+    # Deactivated users can't log in (see login() in app.py) but stay in the
+    # database with all their historical escalation/comment/attachment
+    # associations intact - the alternative to hard-deleting a user, which
+    # fails outright once they're linked to any existing record (foreign key
+    # constraint). This column name intentionally shadows UserMixin's
+    # `is_active` property (which otherwise always returns True) - Flask-Login
+    # reads this real column instead, and refuses login_user() for False here.
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+
     manager_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     manager = db.relationship("User", remote_side=[id], foreign_keys=[manager_id])
 
