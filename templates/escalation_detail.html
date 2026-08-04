@@ -611,6 +611,20 @@ if (commentEditor) {
   commentEditor.addEventListener('blur', syncCommentHidden);
   if (commentForm) commentForm.addEventListener('submit', syncCommentHidden);
 
+  // Prevent duplicate comments from a double-click / repeated click on Post
+  // Comment while the request is in flight (same technique as the Create
+  // Escalation form) - the page fully re-renders after a successful post
+  // (see add_comment() in app.py), which naturally resets the button.
+  if (commentForm) {
+    commentForm.addEventListener('submit', function() {
+      const submitBtn = commentForm.querySelector('button[type="submit"]');
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Posting...';
+      }
+    });
+  }
+
   mentionDropdown.addEventListener('mousedown', (e) => {
     const opt = e.target.closest('.mention-option');
     if (!opt) return;

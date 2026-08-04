@@ -418,5 +418,20 @@ function syncDetailsHidden() {
 detailsEditor.addEventListener('input', syncDetailsHidden);
 detailsEditor.addEventListener('blur', syncDetailsHidden);
 detailsForm.addEventListener('submit', syncDetailsHidden);
+
+// Prevent duplicate escalations from a double-click / repeated Enter/click
+// on Create Escalation while the request is in flight. The 'submit' event
+// only fires after the browser's own required-field validation has already
+// passed, so disabling the button here never blocks a legitimate first
+// submission - it only stops a second one from firing before the page
+// navigates away. If validation fails server-side, the page fully re-renders
+// (see new_escalation() in app.py), which naturally resets the button.
+detailsForm.addEventListener('submit', function() {
+  const submitBtn = detailsForm.querySelector('button[type="submit"]');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Creating...';
+  }
+});
 </script>
 {% endblock %}
