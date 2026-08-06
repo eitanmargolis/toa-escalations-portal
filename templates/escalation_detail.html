@@ -2,7 +2,13 @@
 {% import "_status_badge.html" as b %}
 {% block title %}Escalation #{{ esc.id }}{% endblock %}
 {% block content %}
-<h1 style="margin:0 0 12px;">Escalation #{{ esc.id }} &mdash; {{ esc.candidate }}</h1>
+<h1 style="margin:0 0 4px;">Escalation #{{ esc.id }} &mdash; {{ esc.candidate }}</h1>
+<p style="color:var(--brand-gray);font-size:12px;margin:0 0 12px;">
+  Created by {{ esc.created_by.full_name if esc.created_by else 'Unknown' }}{% if esc.created_at %} on <span class="meta-time" data-utc="{{ esc.created_at.isoformat() }}Z">{{ esc.created_at.strftime('%b %d, %Y %I:%M %p') }} UTC</span>{% endif %}
+  {% if esc.last_modified_by %}
+    &middot; Last modified by {{ esc.last_modified_by.full_name }}{% if esc.last_modified_at %} on <span class="meta-time" data-utc="{{ esc.last_modified_at.isoformat() }}Z">{{ esc.last_modified_at.strftime('%b %d, %Y %I:%M %p') }} UTC</span>{% endif %}
+  {% endif %}
+</p>
 
 <div style="display:flex; gap:20px; align-items:flex-start;">
   <div style="flex:2; min-width:0;">
@@ -523,8 +529,8 @@ salesRepField.addEventListener('change', function() {
   acField.value = acId ? String(acId) : '';
 });
 
-// Convert comment timestamps to the viewer's own browser-local time zone
-document.querySelectorAll('.comment-time').forEach(el => {
+// Convert comment/meta timestamps to the viewer's own browser-local time zone
+document.querySelectorAll('.comment-time, .meta-time').forEach(el => {
   const utc = el.getAttribute('data-utc');
   if (!utc) return;
   const d = new Date(utc);

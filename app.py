@@ -756,6 +756,8 @@ def new_escalation():
             dnr_hospital_system=dnr_hospital_system,
             dnr_hospital_system_notes=dnr_hospital_system_notes,
             created_by_id=current_user.id,
+            last_modified_by_id=current_user.id,
+            last_modified_at=datetime.utcnow(),
         )
 
         # Required field validation
@@ -1148,6 +1150,12 @@ def view_escalation(escalation_id):
             new_dnr_facility_notes = new_dnr_msp_notes = new_dnr_hospital_system_notes = None
 
         # Apply updates
+        # Last Modified By/At (item: track who most recently changed the
+        # record's fields) - deliberately set here, in the main Save Changes
+        # POST handler, and NOT in add_comment() below, so posting a
+        # Discussion comment never touches it.
+        esc.last_modified_by_id = current_user.id
+        esc.last_modified_at = datetime.utcnow()
         esc.type = new_type
         esc.subtype = new_subtype
         esc.candidate = f.get("candidate", esc.candidate)

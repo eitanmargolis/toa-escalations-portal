@@ -176,6 +176,9 @@ TIME_ZONES = [
 REPORT_FIELDS = [
     ("Escalation ID", "id"),
     ("Created At", "created_at"),
+    ("Created By", "created_by_id"),
+    ("Last Modified At", "last_modified_at"),
+    ("Last Modified By", "last_modified_by_id"),
     ("Type", "type"),
     ("Subtype", "subtype"),
     ("Candidate", "candidate"),
@@ -315,6 +318,15 @@ class Escalation(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"))
     created_by = db.relationship("User", foreign_keys=[created_by_id])
+
+    # Set once at creation (see new_escalation() in app.py) and updated only
+    # when the record's fields are saved via the main Save Changes form (see
+    # view_escalation() in app.py) - intentionally NOT touched by posting a
+    # Discussion comment (add_comment()), since a comment isn't a change to
+    # the record itself.
+    last_modified_at = db.Column(db.DateTime, nullable=True)
+    last_modified_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    last_modified_by = db.relationship("User", foreign_keys=[last_modified_by_id])
 
     # --- Information ---
     type = db.Column(db.String(50), nullable=False)
