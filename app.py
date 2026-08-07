@@ -431,25 +431,29 @@ def direct_report_ids_for(user):
     return {u.id for u in User.query.filter_by(manager_id=user.id).all()}
 
 
-def escalations_involving_users(uids, open_only=True):
+# The fields checked for both My Open Escalations (against yourself) and My
+# Team's Open Escalations (against your direct reports). Deliberately
+# NARROWER than the full related-user set on Escalation - fields like
+# Recruiter Manager and Compliance Manager are auto-derived from another
+# field's assigned user's manager (see derive_manager_id() and its call
+# sites), so including them here caused a manager to see the same record
+# twice: once in My Open Escalations (auto-derived onto them as e.g.
+# Compliance Manager) and once in My Team's Open Escalations (via their
+# direct report being the actual Compliance Specialist).
+MY_RECORDS_FIELDS = [
+    "recruiter_id", "sales_rep_id", "compliance_specialist_id",
+    "clinical_liaison_id", "ac_id", "payroll_specialist_id",
+]
+
+
+def escalations_involving_users(uids, open_only=True, fields=None):
     """Shared query used by My Open Escalations and My Team's Open
     Escalations - any escalation where one of the given user ids appears in
-    any related-user field."""
+    one of `fields` (defaults to MY_RECORDS_FIELDS)."""
     if not uids:
         return []
-    filters = [
-        Escalation.recruiter_id.in_(uids),
-        Escalation.sales_rep_id.in_(uids),
-        Escalation.compliance_specialist_id.in_(uids),
-        Escalation.recruiter_manager_id.in_(uids),
-        Escalation.action_to_id.in_(uids),
-        Escalation.payroll_specialist_id.in_(uids),
-        Escalation.clinical_liaison_id.in_(uids),
-        Escalation.ac_id.in_(uids),
-        Escalation.compliance_manager_id.in_(uids),
-        Escalation.prestart_compliance_specialist_id.in_(uids),
-        Escalation.prestart_compliance_manager_id.in_(uids),
-    ]
+    field_names = fields if fields is not None else MY_RECORDS_FIELDS
+    filters = [getattr(Escalation, name).in_(uids) for name in field_names]
     query = Escalation.query
     if open_only:
         query = query.filter(Escalation.status.notin_(CLOSED_STATUSES))

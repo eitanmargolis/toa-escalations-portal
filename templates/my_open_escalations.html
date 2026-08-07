@@ -3,7 +3,7 @@
 {% block title %}My Open Escalations{% endblock %}
 {% block content %}
 <h1>My Open Escalations</h1>
-<p style="color:#6b7a86;">Escalations where you are the Recruiter, Sales Rep, Compliance Specialist, Recruiter Manager, or Action To, currently in Open, Pending Approval, or Clinical Acknowledged status.</p>
+<p style="color:#6b7a86;">Escalations where you are the Recruiter, Sales Rep, Compliance Specialist, Clinical Liaison, AC, or Payroll Specialist, currently in Open, Pending Approval, or Clinical Acknowledged status.</p>
 <div class="card">
   <table>
     <thead><tr><th>ID</th><th>Candidate</th><th>Facility</th><th>Type</th><th>Status</th><th>Danger of Cancelling</th>{% if current_user.role == "Payroll" %}<th>Payroll Specialist Assigned</th>{% endif %}</tr></thead>
