@@ -119,8 +119,24 @@ REQUIRED_SUBTYPE_TYPES = [TYPE_COMPLIANCE, TYPE_PAYROLL, TYPE_CONTRACT, TYPE_PRE
 # Confidential Information section. Pre-Start is handled separately (its
 # Confidential section additionally depends on Subtype - see
 # confidential_section_visible_for() in app.py) since it doesn't get the
-# Clinical Liaison field or DNR checkboxes.
+# DNR checkboxes.
 CLINICAL_LIAISON_DNR_TYPES = CLINICAL_TYPES + [TYPE_PERSONAL]
+
+# Pre-Start DOES get the Clinical Liaison field (and its Lauren Redig
+# auto-assign) even though it doesn't get the DNR checkboxes - so this is a
+# superset of CLINICAL_LIAISON_DNR_TYPES specifically for that one field.
+CLINICAL_LIAISON_TYPES = CLINICAL_LIAISON_DNR_TYPES + [TYPE_PRESTART]
+
+# Bottom-of-Resolution checkbox visibility, each independent of the others:
+# "Facility Cancel Before Opportunity to Counsel" and "T reported to BON" -
+# same type set as CLINICAL_LIAISON_DNR_TYPES (both Clinical types + Personal
+# (On Assignment)), kept as separate names since they're conceptually
+# unrelated to the Clinical Liaison/DNR fields.
+FACILITY_CANCEL_COUNSEL_TYPES = CLINICAL_LIAISON_DNR_TYPES
+REPORTED_TO_BON_TYPES = CLINICAL_LIAISON_DNR_TYPES
+# "Coast DNR" additionally includes Pre-Start - same type set as
+# CLINICAL_LIAISON_TYPES.
+COAST_DNR_TYPES = CLINICAL_LIAISON_TYPES
 
 # Types for which "Discussed with Coast Manager?" is NOT a required field
 # (it's required for every other type by default).
@@ -218,6 +234,9 @@ REPORT_FIELDS = [
     ("DNR MSP Notes", "dnr_msp_notes"),
     ("DNR Hospital System", "dnr_hospital_system"),
     ("DNR Hospital System Notes", "dnr_hospital_system_notes"),
+    ("Facility Cancel Before Opportunity to Counsel", "facility_cancel_before_counsel"),
+    ("Coast DNR", "coast_dnr"),
+    ("T reported to BON", "reported_to_bon"),
     ("Escalation Outcome", "complaint_outcome"),
     ("Clinical Team Save", "clinical_team_save"),
     ("Facility Resolution", "facility_resolution"),
@@ -424,6 +443,13 @@ class Escalation(db.Model):
     dnr_hospital_system = db.Column(db.Boolean, default=False)
     dnr_hospital_system_notes = db.Column(db.Text, nullable=True)
 
+    # Bottom-of-Resolution checkboxes - each only shown on the page layout for
+    # its own subset of Types (see FACILITY_CANCEL_COUNSEL_TYPES,
+    # COAST_DNR_TYPES, REPORTED_TO_BON_TYPES below); no dependent notes field.
+    facility_cancel_before_counsel = db.Column(db.Boolean, default=False)
+    coast_dnr = db.Column(db.Boolean, default=False)
+    reported_to_bon = db.Column(db.Boolean, default=False)
+
     comments = db.relationship("Comment", backref="escalation", cascade="all, delete-orphan", order_by="Comment.created_at")
     attachments = db.relationship("Attachment", backref="escalation", cascade="all, delete-orphan", order_by="Attachment.uploaded_at")
 
@@ -451,6 +477,22 @@ class Comment(db.Model):
     attachment_filename = db.Column(db.String(255), nullable=True)
     attachment_stored_name = db.Column(db.String(255), nullable=True)
     attachment_storage_type = db.Column(db.String(30), nullable=True, default="local")
+    likes = db.relationship("CommentLike", backref="comment", cascade="all, delete-orphan")
+
+
+class CommentLike(db.Model):
+    """One row per user who has liked a given Discussion comment - a simple
+    signal that the comment (and, implicitly, the record) has been reviewed.
+    Toggled on/off (see toggle_comment_like() in app.py); uniqueness per
+    (comment_id, user_id) is enforced in that route rather than at the DB
+    level to keep this addable via the existing auto-migration (which only
+    adds missing tables/columns, not constraints)."""
+    __tablename__ = "comment_likes"
+    id = db.Column(db.Integer, primary_key=True)
+    comment_id = db.Column(db.Integer, db.ForeignKey("comments.id"), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    user = db.relationship("User")
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
 class Attachment(db.Model):

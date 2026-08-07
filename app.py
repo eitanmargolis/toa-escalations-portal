@@ -23,14 +23,15 @@ import cloudinary.utils
 import bleach
 
 from models import (
-    db, User, Escalation, Comment, SavedReportView, Attachment, Mention, MigrationFlag,
+    db, User, Escalation, Comment, CommentLike, SavedReportView, Attachment, Mention, MigrationFlag,
     ROLES, STANDARD_ROLES, ROLE_FOR_RECRUITER_FIELD, ROLE_FOR_SALES_REP_FIELD, ROLE_FOR_COMPLIANCE_FIELD,
     ROLE_FOR_PAYROLL_SPECIALIST_FIELD, ROLE_FOR_AC_FIELD, RETIRED_ROLE_COMPLIANCE_SPECIALIST,
     ESCALATION_TYPES, ALL_ESCALATION_TYPES_FOR_DISPLAY, RETIRED_ESCALATION_TYPES, CLINICAL_TYPES, SUBTYPES_BY_TYPE, YES_NO,
     STATUS_VALUES, OPEN_STATUSES, CLOSED_STATUSES, STATUS_VALUES_BY_TYPE,
     REQUIRED_SUBTYPE_TYPES, DISCUSSED_WITH_MANAGER_NOT_REQUIRED_TYPES,
     TYPE_COMPLIANCE, TYPE_PAYROLL, TYPE_CONTRACT, TYPE_PRESTART, TYPE_PERSONAL,
-    SUBTYPE_CLINICAL_CANCEL, CLINICAL_LIAISON_DNR_TYPES,
+    SUBTYPE_CLINICAL_CANCEL, CLINICAL_LIAISON_DNR_TYPES, CLINICAL_LIAISON_TYPES,
+    FACILITY_CANCEL_COUNSEL_TYPES, COAST_DNR_TYPES, REPORTED_TO_BON_TYPES,
     BEST_TIME_SLOTS, TIME_ZONES, REPORT_FIELDS,
 )
 from email_utils import (
@@ -144,12 +145,15 @@ def manager_or_admin_required(fn):
     return wrapper
 
 
-def status_editable_by(user, esc_type):
+def status_editable_by(user, esc_type, esc_sales_rep_id=None):
     """Who can edit the Status field on a given escalation.
 
     - Admin, Director, and the scoped "Manager" role: always, any type.
     - Payroll role: only when the escalation's Type is Payroll & Timekeeping.
     - Compliance role: only when the escalation's Type is Compliance & Credentialing.
+    - The specific Sales Rep assigned to THIS record (esc_sales_rep_id, not
+      just anyone with the Account Manager role): only when Type is Personal
+      (On Assignment), Pre-Start, or Contract.
     - Everyone else: never.
     """
     if user.role in ("Admin", "Director", "Manager"):
@@ -157,6 +161,8 @@ def status_editable_by(user, esc_type):
     if user.role == "Payroll" and esc_type == TYPE_PAYROLL:
         return True
     if user.role == "Compliance" and esc_type == TYPE_COMPLIANCE:
+        return True
+    if esc_sales_rep_id and user.id == esc_sales_rep_id and esc_type in (TYPE_PERSONAL, TYPE_PRESTART, TYPE_CONTRACT):
         return True
     return False
 
@@ -410,14 +416,44 @@ def validate_status_for_type(esc_type, old_status, new_status):
 
 
 def visible_user_ids_for(user):
-    """Item 11c: users with the NEW scoped 'Manager' role get expanded
-    visibility in My Open/My Closed Escalations - their own tagged records,
-    PLUS records where a direct report (a user whose manager_id points at
-    them) is tagged. Every other role keeps the existing self-only behavior."""
-    if user.role == "Manager":
-        reports = User.query.filter_by(manager_id=user.id).all()
-        return {user.id} | {u.id for u in reports}
+    """My Open/My Closed Escalations show only records the viewing user is
+    personally tagged on, for every role - a Manager/Director/Admin who also
+    creates and works their own records shouldn't have their direct reports'
+    records mixed in here. Team visibility lives separately in My Team's
+    Open Escalations (see direct_report_ids_for() and
+    team_open_escalations()) so the two stay clearly differentiated."""
     return {user.id}
+
+
+def direct_report_ids_for(user):
+    """User ids of everyone whose manager_id points at this user - used by
+    My Team's Open Escalations (Manager/Director/Admin only)."""
+    return {u.id for u in User.query.filter_by(manager_id=user.id).all()}
+
+
+def escalations_involving_users(uids, open_only=True):
+    """Shared query used by My Open Escalations and My Team's Open
+    Escalations - any escalation where one of the given user ids appears in
+    any related-user field."""
+    if not uids:
+        return []
+    filters = [
+        Escalation.recruiter_id.in_(uids),
+        Escalation.sales_rep_id.in_(uids),
+        Escalation.compliance_specialist_id.in_(uids),
+        Escalation.recruiter_manager_id.in_(uids),
+        Escalation.action_to_id.in_(uids),
+        Escalation.payroll_specialist_id.in_(uids),
+        Escalation.clinical_liaison_id.in_(uids),
+        Escalation.ac_id.in_(uids),
+        Escalation.compliance_manager_id.in_(uids),
+        Escalation.prestart_compliance_specialist_id.in_(uids),
+        Escalation.prestart_compliance_manager_id.in_(uids),
+    ]
+    query = Escalation.query
+    if open_only:
+        query = query.filter(Escalation.status.notin_(CLOSED_STATUSES))
+    return query.filter(db.or_(*filters)).order_by(Escalation.created_at.desc()).all()
 
 
 def status_css_class(status):
@@ -683,6 +719,11 @@ def new_escalation():
             dnr_facility = dnr_msp = dnr_hospital_system = False
             dnr_facility_notes = dnr_msp_notes = dnr_hospital_system_notes = None
 
+        # Bottom-of-Resolution checkboxes, each gated to its own Type subset.
+        facility_cancel_before_counsel = bool(f.get("facility_cancel_before_counsel")) if esc_type in FACILITY_CANCEL_COUNSEL_TYPES else False
+        coast_dnr = bool(f.get("coast_dnr")) if esc_type in COAST_DNR_TYPES else False
+        reported_to_bon = bool(f.get("reported_to_bon")) if esc_type in REPORTED_TO_BON_TYPES else False
+
         # Compliance & Credentialing detail fields (item 2e)
         if esc_type == TYPE_COMPLIANCE:
             coast_deadline = f.get("coast_deadline") or None
@@ -755,6 +796,9 @@ def new_escalation():
             dnr_msp_notes=dnr_msp_notes,
             dnr_hospital_system=dnr_hospital_system,
             dnr_hospital_system_notes=dnr_hospital_system_notes,
+            facility_cancel_before_counsel=facility_cancel_before_counsel,
+            coast_dnr=coast_dnr,
+            reported_to_bon=reported_to_bon,
             created_by_id=current_user.id,
             last_modified_by_id=current_user.id,
             last_modified_at=datetime.utcnow(),
@@ -777,8 +821,11 @@ def new_escalation():
                 required_missing.append(label)
         if discussed_with_manager_required_for_type(esc.type) and not esc.discussed_with_manager:
             required_missing.append("Discussed with Coast Manager")
-        # Compliance Specialist is not required for Clinical types or Payroll & Timekeeping.
-        if not compliance_specialist_hidden_for_type(esc.type) and not esc.compliance_specialist_id:
+        # Compliance Specialist is not required for Clinical types, Payroll &
+        # Timekeeping, Contract (hidden entirely for those - see
+        # compliance_specialist_hidden_for_type()), or Personal (On
+        # Assignment) (shown, but optional).
+        if not compliance_specialist_hidden_for_type(esc.type) and esc.type != TYPE_PERSONAL and not esc.compliance_specialist_id:
             required_missing.append("Compliance Specialist")
         if subtype_required_for_type(esc.type) and not esc.subtype:
             required_missing.append("Subtype")
@@ -817,9 +864,9 @@ def new_escalation():
             if payroll_team:
                 esc.payroll_specialist_id = payroll_team.id
 
-        # Auto-set Clinical Liaison -> Lauren Redig for Clinical escalations
-        # and Personal (On Assignment)
-        if esc.type in CLINICAL_LIAISON_DNR_TYPES and not esc.clinical_liaison_id:
+        # Auto-set Clinical Liaison -> Lauren Redig for Clinical escalations,
+        # Personal (On Assignment), and Pre-Start
+        if esc.type in CLINICAL_LIAISON_TYPES and not esc.clinical_liaison_id:
             liaison = get_clinical_liaison_user()
             if liaison:
                 esc.clinical_liaison_id = liaison.id
@@ -852,7 +899,7 @@ def new_escalation():
         recipients = {esc.recruiter, esc.sales_rep, esc.ac, esc.compliance_specialist, esc.recruiter_manager}
         if payroll_applicable:
             recipients.add(esc.payroll_specialist)
-        if esc.type in CLINICAL_LIAISON_DNR_TYPES:
+        if esc.type in CLINICAL_LIAISON_TYPES:
             recipients.add(esc.clinical_liaison)
         for u in recipients:
             if u:
@@ -879,23 +926,24 @@ def new_escalation():
 @login_required
 def my_open_escalations():
     uids = visible_user_ids_for(current_user)
-    escalations = Escalation.query.filter(
-        Escalation.status.notin_(CLOSED_STATUSES),
-        db.or_(
-            Escalation.recruiter_id.in_(uids),
-            Escalation.sales_rep_id.in_(uids),
-            Escalation.compliance_specialist_id.in_(uids),
-            Escalation.recruiter_manager_id.in_(uids),
-            Escalation.action_to_id.in_(uids),
-            Escalation.payroll_specialist_id.in_(uids),
-            Escalation.clinical_liaison_id.in_(uids),
-            Escalation.ac_id.in_(uids),
-            Escalation.compliance_manager_id.in_(uids),
-            Escalation.prestart_compliance_specialist_id.in_(uids),
-            Escalation.prestart_compliance_manager_id.in_(uids),
-        ),
-    ).order_by(Escalation.created_at.desc()).all()
+    escalations = escalations_involving_users(uids, open_only=True)
     return render_template("my_open_escalations.html", escalations=escalations)
+
+
+# ---------------------------------------------------------------------------
+# 2a2. My Team's Open Escalations - Manager/Director/Admin only, shows open
+# escalations tagged to the current user's direct reports (User.manager_id
+# pointing at them), deliberately kept separate from My Open Escalations
+# (see visible_user_ids_for() above for why).
+# ---------------------------------------------------------------------------
+@app.route("/escalations/team")
+@login_required
+def team_open_escalations():
+    if current_user.role not in ("Manager", "Director", "Admin"):
+        abort(403)
+    uids = direct_report_ids_for(current_user)
+    escalations = escalations_involving_users(uids, open_only=True)
+    return render_template("my_team_open_escalations.html", escalations=escalations)
 
 
 # ---------------------------------------------------------------------------
@@ -933,12 +981,20 @@ def my_closed_escalations():
 @app.route("/escalations/mine/mentions")
 @login_required
 def my_mentions():
+    sub = request.args.get("sub", "open")
+    if sub not in ("open", "closed"):
+        sub = "open"
     escalation_ids = [
         row[0] for row in
         db.session.query(Mention.escalation_id).filter_by(mentioned_user_id=current_user.id).distinct().all()
     ]
-    escalations = Escalation.query.filter(Escalation.id.in_(escalation_ids)).order_by(Escalation.created_at.desc()).all()
-    return render_template("my_mentions.html", escalations=escalations)
+    query = Escalation.query.filter(Escalation.id.in_(escalation_ids))
+    if sub == "closed":
+        query = query.filter(Escalation.status.in_(CLOSED_STATUSES))
+    else:
+        query = query.filter(Escalation.status.notin_(CLOSED_STATUSES))
+    escalations = query.order_by(Escalation.created_at.desc()).all()
+    return render_template("my_mentions.html", escalations=escalations, sub=sub)
 
 
 # ---------------------------------------------------------------------------
@@ -1024,7 +1080,7 @@ def view_escalation(escalation_id):
     can_manage = manager_or_admin(current_user)
     # Computed against esc.type as currently stored - i.e. as the page was
     # actually rendered/submitted from, before this request changes anything.
-    can_edit_status = status_editable_by(current_user, esc.type)
+    can_edit_status = status_editable_by(current_user, esc.type, esc.sales_rep_id)
 
     if request.method == "POST":
         f = request.form
@@ -1149,6 +1205,11 @@ def view_escalation(escalation_id):
             new_dnr_facility = new_dnr_msp = new_dnr_hospital_system = False
             new_dnr_facility_notes = new_dnr_msp_notes = new_dnr_hospital_system_notes = None
 
+        # Bottom-of-Resolution checkboxes, each gated to its own Type subset.
+        new_facility_cancel_before_counsel = bool(f.get("facility_cancel_before_counsel")) if new_type in FACILITY_CANCEL_COUNSEL_TYPES else False
+        new_coast_dnr = bool(f.get("coast_dnr")) if new_type in COAST_DNR_TYPES else False
+        new_reported_to_bon = bool(f.get("reported_to_bon")) if new_type in REPORTED_TO_BON_TYPES else False
+
         # Apply updates
         # Last Modified By/At (item: track who most recently changed the
         # record's fields) - deliberately set here, in the main Save Changes
@@ -1203,6 +1264,9 @@ def view_escalation(escalation_id):
         esc.dnr_msp_notes = new_dnr_msp_notes
         esc.dnr_hospital_system = new_dnr_hospital_system
         esc.dnr_hospital_system_notes = new_dnr_hospital_system_notes
+        esc.facility_cancel_before_counsel = new_facility_cancel_before_counsel
+        esc.coast_dnr = new_coast_dnr
+        esc.reported_to_bon = new_reported_to_bon
         esc.complaint_outcome = f.get("complaint_outcome") or None
         esc.clinical_team_save = bool(f.get("clinical_team_save"))
         esc.facility_resolution = f.get("facility_resolution") or None
@@ -1222,9 +1286,9 @@ def view_escalation(escalation_id):
             if payroll_team:
                 esc.payroll_specialist_id = payroll_team.id
 
-        # Auto-set Clinical Liaison -> Lauren Redig for Clinical escalations
-        # and Personal (On Assignment)
-        if esc.type in CLINICAL_LIAISON_DNR_TYPES and not esc.clinical_liaison_id:
+        # Auto-set Clinical Liaison -> Lauren Redig for Clinical escalations,
+        # Personal (On Assignment), and Pre-Start
+        if esc.type in CLINICAL_LIAISON_TYPES and not esc.clinical_liaison_id:
             liaison = get_clinical_liaison_user()
             if liaison:
                 esc.clinical_liaison_id = liaison.id
@@ -1278,7 +1342,7 @@ def view_escalation(escalation_id):
             status_recipients = {esc.recruiter, esc.sales_rep, esc.ac, esc.compliance_specialist}
             if payroll_applicable:
                 status_recipients.add(esc.payroll_specialist)
-            if esc.type in CLINICAL_LIAISON_DNR_TYPES:
+            if esc.type in CLINICAL_LIAISON_TYPES:
                 status_recipients.add(esc.clinical_liaison)
             for u in status_recipients:
                 if u:
@@ -1328,10 +1392,17 @@ def add_comment(escalation_id):
 
     users = User.query.all()
     mentioned = parse_mentions(body, users)
+    related_user_ids = esc.user_ids_involved()
     for u in mentioned:
-        # Persist a Mention row for every match (item 8), regardless of self-mention,
-        # so "My Mentions" reflects exactly what parse_mentions() detected.
-        db.session.add(Mention(escalation_id=esc.id, comment_id=comment.id, mentioned_user_id=u.id))
+        # Persist a Mention row (surfaced in "My Mentions") only for a
+        # mentioned user who ISN'T already a related user on this record -
+        # someone already tagged as Recruiter/Sales Rep/etc. already sees the
+        # record via My Open Escalations (or My Team's Open Escalations), so
+        # a duplicate entry in My Mentions would just be noise for them. They
+        # still get the @mention email regardless (see send_mention_email()
+        # below) - this only affects what shows up in the My Mentions tab.
+        if u.id not in related_user_ids:
+            db.session.add(Mention(escalation_id=esc.id, comment_id=comment.id, mentioned_user_id=u.id))
     db.session.commit()
 
     for u in mentioned:
@@ -1349,6 +1420,22 @@ def add_comment(escalation_id):
             send_new_comment_email(u, esc, current_user, base_url())
 
     return redirect(url_for("view_escalation", escalation_id=escalation_id))
+
+
+@app.route("/comments/<int:comment_id>/like", methods=["POST"])
+@login_required
+def toggle_comment_like(comment_id):
+    """Toggle the current user's like on a Discussion comment - a simple
+    signal that the comment (and the record) has been reviewed. Liking again
+    after already liking removes the like (un-like)."""
+    comment = db.session.get(Comment, comment_id) or abort(404)
+    existing = CommentLike.query.filter_by(comment_id=comment.id, user_id=current_user.id).first()
+    if existing:
+        db.session.delete(existing)
+    else:
+        db.session.add(CommentLike(comment_id=comment.id, user_id=current_user.id))
+    db.session.commit()
+    return redirect(url_for("view_escalation", escalation_id=comment.escalation_id))
 
 
 @app.route("/attachments/<int:attachment_id>/download")
@@ -1644,7 +1731,7 @@ def _sync_missing_columns():
     NOT NULL constraints on columns the model now marks nullable. Avoids
     needing a full migration tool for additive/loosening schema changes."""
     inspector = inspect(db.engine)
-    for model in [User, Escalation, Comment, SavedReportView, Attachment, Mention, MigrationFlag]:
+    for model in [User, Escalation, Comment, CommentLike, SavedReportView, Attachment, Mention, MigrationFlag]:
         table_name = model.__tablename__
         if not inspector.has_table(table_name):
             continue

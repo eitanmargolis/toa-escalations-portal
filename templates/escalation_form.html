@@ -206,6 +206,15 @@
       <label>DNR Hospital System Notes<span id="dnrHospitalRequiredMark"> *</span></label>
       <textarea name="dnr_hospital_system_notes"></textarea>
     </div>
+    <div id="facilityCancelCounselWrapper" style="display:none;">
+      <label><input type="checkbox" name="facility_cancel_before_counsel" style="width:auto;"> Facility Cancel Before Opportunity to Counsel</label>
+    </div>
+    <div id="coastDnrWrapper" style="display:none;">
+      <label><input type="checkbox" name="coast_dnr" style="width:auto;"> Coast DNR</label>
+    </div>
+    <div id="reportedToBonWrapper" style="display:none;">
+      <label><input type="checkbox" name="reported_to_bon" style="width:auto;"> T reported to BON</label>
+    </div>
   </div>
 
   <p style="margin-top:20px;">
@@ -261,6 +270,9 @@ const dnrMspWrapper = document.getElementById('dnrMspWrapper');
 const dnrMspNotesWrapper = document.getElementById('dnrMspNotesWrapper');
 const dnrHospitalWrapper = document.getElementById('dnrHospitalWrapper');
 const dnrHospitalNotesWrapper = document.getElementById('dnrHospitalNotesWrapper');
+const facilityCancelCounselWrapper = document.getElementById('facilityCancelCounselWrapper');
+const coastDnrWrapper = document.getElementById('coastDnrWrapper');
+const reportedToBonWrapper = document.getElementById('reportedToBonWrapper');
 const salesRepField = document.getElementById('salesRepField');
 const acField = document.getElementById('acField');
 const salesRepWrapper = document.getElementById('salesRepWrapper');
@@ -274,9 +286,11 @@ function syncSubtype() {
   const isPayroll = type === TYPE_PAYROLL;
   const isPrestart = type === TYPE_PRESTART;
   const isPersonal = type === TYPE_PERSONAL;
-  // Clinical Liaison field + DNR checkboxes are shown for the two Clinical
-  // types AND Personal (On Assignment).
+  // DNR checkboxes are shown for the two Clinical types AND Personal (On
+  // Assignment). The Clinical Liaison field additionally shows for
+  // Pre-Start too (but Pre-Start doesn't get the DNR checkboxes).
   const isDnrLiaisonApplicable = isClinical || isPersonal;
+  const isClinicalLiaisonApplicable = isDnrLiaisonApplicable || isPrestart;
   const subtypeRequired = isClinical || REQUIRED_SUBTYPE_TYPES.includes(type);
   if (subtypeRequired) {
     subtypeWrapper.style.display = '';
@@ -291,7 +305,8 @@ function syncSubtype() {
   }
 
   // Compliance Specialist is removed from the page entirely for Clinical types
-  // and Payroll & Timekeeping (item 4e); not required (but shown) otherwise.
+  // and Payroll & Timekeeping (item 4e); shown but NOT required for Personal
+  // (On Assignment); required (default) otherwise.
   const complianceHidden = isClinical || isPayroll || type === TYPE_CONTRACT;
   if (complianceHidden) {
     complianceWrapper.style.display = 'none';
@@ -299,8 +314,8 @@ function syncSubtype() {
     complianceField.value = '';
   } else {
     complianceWrapper.style.display = '';
-    complianceField.required = true;
-    complianceRequiredMark.style.display = '';
+    complianceField.required = !isPersonal;
+    complianceRequiredMark.style.display = isPersonal ? 'none' : '';
   }
   complianceManagerWrapper.style.display = (isCompliance || isPrestart) ? '' : 'none';
 
@@ -308,7 +323,7 @@ function syncSubtype() {
   syncPayrollVisibility();
 
   // Clinical Liaison field shown for Clinical types and Personal (On Assignment)
-  clinicalLiaisonWrapper.style.display = isDnrLiaisonApplicable ? '' : 'none';
+  clinicalLiaisonWrapper.style.display = isClinicalLiaisonApplicable ? '' : 'none';
 
   // Discussed with Coast Manager - not required for Compliance & Credentialing / Payroll & Timekeeping
   const discussedRequired = !DISCUSSED_NOT_REQUIRED_TYPES.includes(type);
@@ -349,6 +364,14 @@ function syncSubtype() {
     w.style.display = isDnrLiaisonApplicable ? '' : 'none';
   });
   syncDnrVisibility(isDnrLiaisonApplicable);
+
+  // Bottom-of-Resolution checkboxes (each independently gated by Type):
+  // Facility Cancel Before Opportunity to Counsel + T reported to BON share
+  // the same Clinical/Personal (On Assignment) type set as the DNR
+  // checkboxes above; Coast DNR additionally includes Pre-Start.
+  facilityCancelCounselWrapper.style.display = isDnrLiaisonApplicable ? '' : 'none';
+  reportedToBonWrapper.style.display = isDnrLiaisonApplicable ? '' : 'none';
+  coastDnrWrapper.style.display = isClinicalLiaisonApplicable ? '' : 'none';
 }
 
 function syncDnrVisibility(isDnrApplicable) {

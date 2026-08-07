@@ -253,6 +253,15 @@
           <label>DNR Hospital System Notes<span id="dnrHospitalRequiredMark"> *</span></label>
           <textarea name="dnr_hospital_system_notes">{{ esc.dnr_hospital_system_notes or '' }}</textarea>
         </div>
+        <div id="facilityCancelCounselWrapper">
+          <label><input type="checkbox" name="facility_cancel_before_counsel" style="width:auto;" {{ 'checked' if esc.facility_cancel_before_counsel }}> Facility Cancel Before Opportunity to Counsel</label>
+        </div>
+        <div id="coastDnrWrapper">
+          <label><input type="checkbox" name="coast_dnr" style="width:auto;" {{ 'checked' if esc.coast_dnr }}> Coast DNR</label>
+        </div>
+        <div id="reportedToBonWrapper">
+          <label><input type="checkbox" name="reported_to_bon" style="width:auto;" {{ 'checked' if esc.reported_to_bon }}> T reported to BON</label>
+        </div>
       </div>
 
       <p style="margin-top:20px;">
@@ -268,7 +277,8 @@
 
   <div style="flex:1; min-width:320px;">
     <div class="card">
-      <h2 style="margin-top:0;">Discussion</h2>
+      <h2 style="margin-top:0;margin-bottom:2px;">Discussion</h2>
+      <p style="color:var(--brand-gray);font-size:12px;margin:0 0 12px;">Tag a user for them to receive the email notification</p>
       <div class="comment-feed">
         {% for c in esc.comments %}
           <div class="comment">
@@ -280,6 +290,15 @@
                 <a href="{{ url_for('download_comment_attachment', comment_id=c.id, download=1) }}" style="font-size:12px;margin-left:6px;">Download</a>
               </div>
             {% endif %}
+            <div style="margin-top:6px;display:flex;align-items:center;gap:6px;">
+              <form method="post" action="{{ url_for('toggle_comment_like', comment_id=c.id) }}" style="display:inline;">
+                {% set liked = c.likes|selectattr('user_id', 'equalto', current_user.id)|list|length > 0 %}
+                <button type="submit" class="btn btn-secondary" style="padding:2px 10px;font-size:12px;{{ 'background:var(--brand-primary);color:#fff;' if liked }}">👍 {{ 'Liked' if liked else 'Like' }}{% if c.likes %} ({{ c.likes|length }}){% endif %}</button>
+              </form>
+              {% if c.likes %}
+                <span style="color:var(--brand-gray);font-size:12px;" title="{{ c.likes|map(attribute='user.full_name')|join(', ') }}">Liked by {{ c.likes|map(attribute='user.full_name')|join(', ') }}</span>
+              {% endif %}
+            </div>
           </div>
         {% else %}
           <p style="color:var(--brand-gray);">No comments yet.</p>
@@ -309,16 +328,21 @@ const CURRENT_STATUS = {{ (esc.status or "")|tojson }};
 const TYPE_COMPLIANCE = "Compliance & Credentialing";
 const TYPE_PAYROLL = "Payroll & Timekeeping";
 const CURRENT_USER_ROLE = {{ current_user.role|tojson }};
+const CURRENT_USER_ID = {{ current_user.id|tojson }};
+const ESC_SALES_REP_ID = {{ esc.sales_rep_id|tojson }};
+const TYPE_CONTRACT = "Contract";
+const TYPE_PRESTART = "Pre-Start";
+const TYPE_PERSONAL = "Personal (On Assignment)";
 
 function computeCanEditStatus(type) {
   if (["Admin", "Director", "Manager"].includes(CURRENT_USER_ROLE)) return true;
   if (CURRENT_USER_ROLE === "Payroll" && type === TYPE_PAYROLL) return true;
   if (CURRENT_USER_ROLE === "Compliance" && type === TYPE_COMPLIANCE) return true;
+  // The specific Sales Rep assigned to THIS record (not just anyone with the
+  // Account Manager role) can edit Status for these three types.
+  if (ESC_SALES_REP_ID && CURRENT_USER_ID === ESC_SALES_REP_ID && [TYPE_PERSONAL, TYPE_PRESTART, TYPE_CONTRACT].includes(type)) return true;
   return false;
 }
-const TYPE_CONTRACT = "Contract";
-const TYPE_PRESTART = "Pre-Start";
-const TYPE_PERSONAL = "Personal (On Assignment)";
 const SUBTYPE_CLINICAL_CANCEL = "Clinical/Cancel";
 const REQUIRED_SUBTYPE_TYPES = [TYPE_COMPLIANCE, TYPE_PAYROLL, TYPE_CONTRACT, TYPE_PRESTART, TYPE_PERSONAL];
 const DISCUSSED_NOT_REQUIRED_TYPES = [TYPE_COMPLIANCE, TYPE_PAYROLL];
@@ -356,6 +380,9 @@ const dnrMspWrapper = document.getElementById('dnrMspWrapper');
 const dnrMspNotesWrapper = document.getElementById('dnrMspNotesWrapper');
 const dnrHospitalWrapper = document.getElementById('dnrHospitalWrapper');
 const dnrHospitalNotesWrapper = document.getElementById('dnrHospitalNotesWrapper');
+const facilityCancelCounselWrapper = document.getElementById('facilityCancelCounselWrapper');
+const coastDnrWrapper = document.getElementById('coastDnrWrapper');
+const reportedToBonWrapper = document.getElementById('reportedToBonWrapper');
 const salesRepField = document.getElementById('salesRepField');
 const acField = document.getElementById('acField');
 const salesRepWrapper = document.getElementById('salesRepWrapper');
@@ -372,9 +399,11 @@ function syncSubtype(preserveCurrent) {
   const isPayroll = type === TYPE_PAYROLL;
   const isPrestart = type === TYPE_PRESTART;
   const isPersonal = type === TYPE_PERSONAL;
-  // Clinical Liaison field + DNR checkboxes are shown for the two Clinical
-  // types AND Personal (On Assignment).
+  // DNR checkboxes are shown for the two Clinical types AND Personal (On
+  // Assignment). The Clinical Liaison field additionally shows for
+  // Pre-Start too (but Pre-Start doesn't get the DNR checkboxes).
   const isDnrLiaisonApplicable = isClinical || isPersonal;
+  const isClinicalLiaisonApplicable = isDnrLiaisonApplicable || isPrestart;
   const subtypeRequired = isClinical || REQUIRED_SUBTYPE_TYPES.includes(type);
   if (subtypeRequired) {
     subtypeWrapper.style.display = '';
@@ -398,7 +427,7 @@ function syncSubtype(preserveCurrent) {
   complianceManagerWrapper.style.display = (isCompliance || isPrestart) ? '' : 'none';
 
   syncPayrollVisibility();
-  clinicalLiaisonWrapper.style.display = isDnrLiaisonApplicable ? '' : 'none';
+  clinicalLiaisonWrapper.style.display = isClinicalLiaisonApplicable ? '' : 'none';
   syncConfidentialVisibility();
 
   const discussedRequired = !DISCUSSED_NOT_REQUIRED_TYPES.includes(type);
@@ -434,6 +463,14 @@ function syncSubtype(preserveCurrent) {
     w.style.display = isDnrLiaisonApplicable ? '' : 'none';
   });
   syncDnrVisibility(isDnrLiaisonApplicable);
+
+  // Bottom-of-Resolution checkboxes (each independently gated by Type):
+  // Facility Cancel Before Opportunity to Counsel + T reported to BON share
+  // the same Clinical/Personal (On Assignment) type set as the DNR
+  // checkboxes above; Coast DNR additionally includes Pre-Start.
+  facilityCancelCounselWrapper.style.display = isDnrLiaisonApplicable ? '' : 'none';
+  reportedToBonWrapper.style.display = isDnrLiaisonApplicable ? '' : 'none';
+  coastDnrWrapper.style.display = isClinicalLiaisonApplicable ? '' : 'none';
 
   syncStatusOptions(type, preserveCurrent);
 }

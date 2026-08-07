@@ -20,6 +20,9 @@
   <div class="tabs">
     <a href="{{ url_for('new_escalation') }}" class="{{ 'active' if request.endpoint=='new_escalation' }}">Create an Escalation</a>
     <a href="{{ url_for('my_open_escalations') }}" class="{{ 'active' if request.endpoint=='my_open_escalations' }}">My Open Escalations</a>
+    {% if current_user.role in ["Manager", "Director", "Admin"] %}
+    <a href="{{ url_for('team_open_escalations') }}" class="{{ 'active' if request.endpoint=='team_open_escalations' }}">My Team's Open Escalations</a>
+    {% endif %}
     <a href="{{ url_for('my_closed_escalations') }}" class="{{ 'active' if request.endpoint=='my_closed_escalations' }}">My Closed Escalations</a>
     <a href="{{ url_for('my_mentions') }}" class="{{ 'active' if request.endpoint=='my_mentions' }}">My Mentions</a>
     {% if current_user.is_manager_or_admin() %}

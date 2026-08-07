@@ -3,7 +3,11 @@
 {% block title %}My Mentions{% endblock %}
 {% block content %}
 <h1>My Mentions</h1>
-<p style="color:#6b7a86;">Escalations where you have been @mentioned at least once in the Discussion.</p>
+<p style="color:#6b7a86;">Escalations where you have been @mentioned at least once in the Discussion, and you're not already a related user on the record (those stay in My Open Escalations instead).</p>
+<div style="display:flex; gap:8px; margin-bottom:14px;">
+  <a href="{{ url_for('my_mentions', sub='open') }}" style="padding:6px 16px; border-radius:16px; text-decoration:none; font-size:13px; font-weight:600; font-family:'Montserrat',sans-serif; {{ 'background:var(--brand-primary); color:#fff;' if sub=='open' else 'background:#eef1f3; color:var(--text-dark);' }}">Open</a>
+  <a href="{{ url_for('my_mentions', sub='closed') }}" style="padding:6px 16px; border-radius:16px; text-decoration:none; font-size:13px; font-weight:600; font-family:'Montserrat',sans-serif; {{ 'background:var(--brand-primary); color:#fff;' if sub=='closed' else 'background:#eef1f3; color:var(--text-dark);' }}">Closed</a>
+</div>
 <div class="card">
   <table>
     <thead><tr><th>ID</th><th>Candidate</th><th>Facility</th><th>Type</th><th>Status</th></tr></thead>
@@ -17,7 +21,7 @@
         <td>{{ b.status_badge(e.status) }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="5" style="color:#6b7a86;">You haven't been mentioned in any escalations yet.</td></tr>
+      <tr><td colspan="5" style="color:#6b7a86;">No {{ sub }} mentions.</td></tr>
       {% endfor %}
     </tbody>
   </table>
