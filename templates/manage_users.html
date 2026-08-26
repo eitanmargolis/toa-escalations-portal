@@ -28,6 +28,12 @@
         {% for u in acs %}<option value="{{ u.id }}">{{ u.full_name }}</option>{% endfor %}
       </select>
     </div>
+    <div>
+      <label style="display:flex;align-items:center;gap:6px;font-weight:normal;">
+        <input type="checkbox" name="also_compliance_specialist">
+        Also acts as Compliance Specialist
+      </label>
+    </div>
     <div class="full"><button class="btn" type="submit">Create User</button></div>
   </form>
 </div>
@@ -35,7 +41,7 @@
 <div class="card">
   <h2 style="margin-top:0;">Existing Users</h2>
   <table>
-    <thead><tr><th>First Name</th><th>Last Name</th><th>Email</th><th>Role</th><th>Manager</th><th>Status</th><th style="min-width:220px;"></th></tr></thead>
+    <thead><tr><th>First Name</th><th>Last Name</th><th>Email</th><th>Role</th><th>Manager</th><th>Compliance Desk</th><th>Status</th><th style="min-width:220px;"></th></tr></thead>
     <tbody>
       {% for u in users %}
       <tr>
@@ -62,6 +68,9 @@
           </span>
         </td>
         </form>
+        <td style="text-align:center;">
+          <input type="checkbox" name="also_compliance_specialist" form="edit-user-form-{{ u.id }}" {{ 'checked' if u.also_compliance_specialist }}>
+        </td>
         <td>
           {% if u.is_active %}
           <span style="color:#1a7a3c;font-size:13px;">Active</span>

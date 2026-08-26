@@ -4,26 +4,47 @@
 {% block content %}
 <h1>My Mentions</h1>
 <p style="color:#6b7a86;">Escalations where you have been @mentioned at least once in the Discussion, and you're not already a related user on the record (those stay in My Open Escalations instead).</p>
+<p style="color:#6b7a86;font-size:13px;">Priority is personal to you - {{ priority_help }}. No one else can see what you set here.</p>
 <div style="display:flex; gap:8px; margin-bottom:14px;">
   <a href="{{ url_for('my_mentions', sub='open') }}" style="padding:6px 16px; border-radius:16px; text-decoration:none; font-size:13px; font-weight:600; font-family:'Montserrat',sans-serif; {{ 'background:var(--brand-primary); color:#fff;' if sub=='open' else 'background:#eef1f3; color:var(--text-dark);' }}">Open</a>
   <a href="{{ url_for('my_mentions', sub='closed') }}" style="padding:6px 16px; border-radius:16px; text-decoration:none; font-size:13px; font-weight:600; font-family:'Montserrat',sans-serif; {{ 'background:var(--brand-primary); color:#fff;' if sub=='closed' else 'background:#eef1f3; color:var(--text-dark);' }}">Closed</a>
 </div>
 <div class="card">
-  <table>
-    <thead><tr><th>ID</th><th>Candidate</th><th>Facility</th><th>Type</th><th>Status</th></tr></thead>
+  <table data-sortable>
+    <thead>
+      <tr>
+        <th data-sort="num">ID</th>
+        <th data-sort="text">Candidate</th>
+        <th data-sort="text">Facility</th>
+        <th data-sort="text">Type</th>
+        <th data-sort="text">Status</th>
+        <th data-sort="num" title="{{ priority_help }}">Priority</th>
+        {% if current_user.role != "Recruiter" %}<th data-sort="text">Recruiter</th>{% endif %}
+      </tr>
+    </thead>
     <tbody>
       {% for e in escalations %}
+      {% set info = personal_info.get(e.id) %}
       <tr onclick="window.location='{{ url_for('view_escalation', escalation_id=e.id) }}'" style="cursor:pointer;">
-        <td>#{{ e.id }}</td>
+        <td data-sort-value="{{ e.id }}">#{{ e.id }}</td>
         <td>{{ e.candidate }}</td>
         <td>{{ e.facility }}</td>
         <td>{{ e.type }}</td>
         <td>{{ b.status_badge(e.status) }}</td>
+        <td data-sort-value="{{ info.priority if info and info.priority else 5 }}">
+          <select data-personal-priority data-escalation-id="{{ e.id }}" title="{{ priority_help }}">
+            <option value="">-- None --</option>
+            {% for p in priority_choices %}<option value="{{ p }}" {{ 'selected' if info and info.priority == p }}>{{ p }}</option>{% endfor %}
+          </select>
+        </td>
+        {% if current_user.role != "Recruiter" %}<td>{{ e.recruiter.full_name if e.recruiter }}</td>{% endif %}
       </tr>
       {% else %}
-      <tr><td colspan="5" style="color:#6b7a86;">No {{ sub }} mentions.</td></tr>
+      <tr class="empty-row"><td colspan="7" style="color:#6b7a86;">No {{ sub }} mentions.</td></tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
+<script src="{{ url_for('static', filename='sortable-table.js') }}"></script>
+<script src="{{ url_for('static', filename='personal-record-info.js') }}"></script>
 {% endblock %}

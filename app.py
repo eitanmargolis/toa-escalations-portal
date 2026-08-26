@@ -24,6 +24,7 @@ import bleach
 
 from models import (
     db, User, Escalation, Comment, CommentLike, SavedReportView, Attachment, Mention, MigrationFlag,
+    PersonalRecordInfo, PRIORITY_CHOICES, PRIORITY_HELP_TEXT,
     ROLES, STANDARD_ROLES, ROLE_FOR_RECRUITER_FIELD, ROLE_FOR_SALES_REP_FIELD, ROLE_FOR_COMPLIANCE_FIELD,
     ROLE_FOR_PAYROLL_SPECIALIST_FIELD, ROLE_FOR_AC_FIELD, RETIRED_ROLE_COMPLIANCE_SPECIALIST,
     ESCALATION_TYPES, ALL_ESCALATION_TYPES_FOR_DISPLAY, RETIRED_ESCALATION_TYPES, CLINICAL_TYPES, SUBTYPES_BY_TYPE, YES_NO,
@@ -290,7 +291,12 @@ def sales_rep_options():
 
 
 def compliance_options():
-    return User.query.filter_by(role=ROLE_FOR_COMPLIANCE_FIELD).order_by(User.first_name).all()
+    # Includes anyone with the Compliance role, PLUS any user separately
+    # flagged as also_compliance_specialist (e.g. a Manager who runs their
+    # own compliance desk in addition to managing a team).
+    return User.query.filter(
+        db.or_(User.role == ROLE_FOR_COMPLIANCE_FIELD, User.also_compliance_specialist == True)  # noqa: E712
+    ).order_by(User.first_name).all()
 
 
 def payroll_specialist_options():
@@ -926,12 +932,30 @@ def new_escalation():
 # ---------------------------------------------------------------------------
 # 2. My Open Escalations
 # ---------------------------------------------------------------------------
+def personal_info_map_for(user_id, escalation_ids):
+    """dict: escalation_id -> PersonalRecordInfo, scoped to one viewer's
+    private Notes/Priority fields (see PersonalRecordInfo in models.py).
+    Rows are created lazily on first save, so most escalations won't have
+    one yet - callers should treat a missing key as "no notes/priority set"."""
+    if not escalation_ids:
+        return {}
+    rows = PersonalRecordInfo.query.filter(
+        PersonalRecordInfo.user_id == user_id,
+        PersonalRecordInfo.escalation_id.in_(escalation_ids),
+    ).all()
+    return {r.escalation_id: r for r in rows}
+
+
 @app.route("/escalations/mine")
 @login_required
 def my_open_escalations():
     uids = visible_user_ids_for(current_user)
     escalations = escalations_involving_users(uids, open_only=True)
-    return render_template("my_open_escalations.html", escalations=escalations)
+    personal_info = personal_info_map_for(current_user.id, [e.id for e in escalations])
+    return render_template(
+        "my_open_escalations.html", escalations=escalations, personal_info=personal_info,
+        priority_choices=PRIORITY_CHOICES, priority_help=PRIORITY_HELP_TEXT,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -947,7 +971,11 @@ def team_open_escalations():
         abort(403)
     uids = direct_report_ids_for(current_user)
     escalations = escalations_involving_users(uids, open_only=True)
-    return render_template("my_team_open_escalations.html", escalations=escalations)
+    personal_info = personal_info_map_for(current_user.id, [e.id for e in escalations])
+    return render_template(
+        "my_team_open_escalations.html", escalations=escalations, personal_info=personal_info,
+        priority_choices=PRIORITY_CHOICES, priority_help=PRIORITY_HELP_TEXT,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -976,7 +1004,11 @@ def my_closed_escalations():
             Escalation.action_to_id.in_(uids),
         ),
     ).order_by(Escalation.created_at.desc()).all()
-    return render_template("my_closed_escalations.html", escalations=escalations)
+    personal_info = personal_info_map_for(current_user.id, [e.id for e in escalations])
+    return render_template(
+        "my_closed_escalations.html", escalations=escalations, personal_info=personal_info,
+        priority_choices=PRIORITY_CHOICES, priority_help=PRIORITY_HELP_TEXT,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -998,7 +1030,11 @@ def my_mentions():
     else:
         query = query.filter(Escalation.status.notin_(CLOSED_STATUSES))
     escalations = query.order_by(Escalation.created_at.desc()).all()
-    return render_template("my_mentions.html", escalations=escalations, sub=sub)
+    personal_info = personal_info_map_for(current_user.id, [e.id for e in escalations])
+    return render_template(
+        "my_mentions.html", escalations=escalations, sub=sub, personal_info=personal_info,
+        priority_choices=PRIORITY_CHOICES, priority_help=PRIORITY_HELP_TEXT,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1033,9 +1069,11 @@ def all_escalations():
         query = query.filter(Escalation.status == status_filter)
 
     escalations = query.order_by(Escalation.created_at.desc()).all()
+    personal_info = personal_info_map_for(current_user.id, [e.id for e in escalations])
     return render_template(
         "all_escalations.html", escalations=escalations, users=users, statuses=STATUS_VALUES,
         user_filter=user_filter, user_role_filter=user_role_filter, status_filter=status_filter,
+        personal_info=personal_info, priority_choices=PRIORITY_CHOICES, priority_help=PRIORITY_HELP_TEXT,
     )
 
 
@@ -1396,7 +1434,15 @@ def add_comment(escalation_id):
 
     users = User.query.all()
     mentioned = parse_mentions(body, users)
-    related_user_ids = esc.user_ids_involved()
+    # IMPORTANT: this must use the exact same field set as My Open/Team's
+    # Open Escalations (MY_RECORDS_FIELDS), NOT the broader
+    # esc.user_ids_involved() (which also includes Action To, Recruiter
+    # Manager, etc.). Using a broader set here than what actually grants
+    # visibility elsewhere was a real bug: a user set as Action To (not in
+    # MY_RECORDS_FIELDS, so NOT shown in My Open Escalations) was still being
+    # treated as "already has visibility" and skipped from My Mentions -
+    # leaving them with no way to see the record they were tagged on at all.
+    related_user_ids = {getattr(esc, field) for field in MY_RECORDS_FIELDS if getattr(esc, field)}
     for u in mentioned:
         # Persist a Mention row (surfaced in "My Mentions") only for a
         # mentioned user who ISN'T already a related user on this record -
@@ -1411,7 +1457,7 @@ def add_comment(escalation_id):
 
     for u in mentioned:
         if u.id != current_user.id:
-            send_mention_email(u, esc, current_user, base_url())
+            send_mention_email(u, esc, current_user, base_url(), comment_body=comment.body)
 
     # Notify everyone who has previously commented + the record creator, excluding author & already-mentioned
     prior_commenter_ids = {c.user_id for c in esc.comments}
@@ -1421,7 +1467,7 @@ def add_comment(escalation_id):
     for uid in notify_ids - mentioned_ids:
         u = db.session.get(User, uid)
         if u:
-            send_new_comment_email(u, esc, current_user, base_url())
+            send_new_comment_email(u, esc, current_user, base_url(), comment_body=comment.body)
 
     return redirect(url_for("view_escalation", escalation_id=escalation_id))
 
@@ -1440,6 +1486,29 @@ def toggle_comment_like(comment_id):
         db.session.add(CommentLike(comment_id=comment.id, user_id=current_user.id))
     db.session.commit()
     return redirect(url_for("view_escalation", escalation_id=comment.escalation_id))
+
+
+@app.route("/escalations/<int:escalation_id>/personal-info", methods=["POST"])
+@login_required
+def save_personal_info(escalation_id):
+    """Saves the CURRENT viewer's own private Notes/Priority for a record -
+    never visible to anyone else, even other users who can also see this
+    same escalation. Called via fetch() from the list-view tabs so the page
+    doesn't reload; get-or-create row per (user, escalation), same pattern
+    as CommentLike/toggle_comment_like above."""
+    esc = db.session.get(Escalation, escalation_id) or abort(404)
+    notes = (request.form.get("notes") or "").strip()
+    priority_raw = request.form.get("priority") or ""
+    priority = int(priority_raw) if priority_raw in ("1", "2", "3", "4") else None
+    info = PersonalRecordInfo.query.filter_by(user_id=current_user.id, escalation_id=esc.id).first()
+    if not info:
+        info = PersonalRecordInfo(user_id=current_user.id, escalation_id=esc.id)
+        db.session.add(info)
+    info.notes = notes or None
+    info.priority = priority
+    info.updated_at = datetime.utcnow()
+    db.session.commit()
+    return jsonify({"ok": True, "notes": info.notes or "", "priority": info.priority})
 
 
 @app.route("/attachments/<int:attachment_id>/download")
@@ -1629,6 +1698,7 @@ def create_user():
         role=role,
         manager_id=f.get("manager_id") or None,
         assigned_ac_id=assigned_ac_id if role == "Account Manager" else None,
+        also_compliance_specialist=f.get("also_compliance_specialist") == "on",
     )
     # Set an unusable random password until the user sets their own via the welcome email
     user.set_password(secrets.token_urlsafe(16))
@@ -1658,6 +1728,7 @@ def edit_user(user_id):
         user.assigned_ac_id = int(assigned_ac_id) if assigned_ac_id and int(assigned_ac_id) != user.id else None
     else:
         user.assigned_ac_id = None
+    user.also_compliance_specialist = f.get("also_compliance_specialist") == "on"
     db.session.commit()
     flash(f"User {user.full_name} updated.", "success")
     return redirect(url_for("manage_users"))
@@ -1735,7 +1806,7 @@ def _sync_missing_columns():
     NOT NULL constraints on columns the model now marks nullable. Avoids
     needing a full migration tool for additive/loosening schema changes."""
     inspector = inspect(db.engine)
-    for model in [User, Escalation, Comment, CommentLike, SavedReportView, Attachment, Mention, MigrationFlag]:
+    for model in [User, Escalation, Comment, CommentLike, SavedReportView, Attachment, Mention, MigrationFlag, PersonalRecordInfo]:
         table_name = model.__tablename__
         if not inspector.has_table(table_name):
             continue

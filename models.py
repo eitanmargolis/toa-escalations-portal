@@ -271,6 +271,12 @@ class User(UserMixin, db.Model):
     assigned_ac_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     assigned_ac = db.relationship("User", remote_side=[id], foreign_keys=[assigned_ac_id])
 
+    # Lets a non-Compliance-role user (e.g. a Manager who also runs their own
+    # compliance desk) additionally show up as a choice in the Compliance
+    # Specialist field, without changing their primary Role. Toggled via a
+    # checkbox on Manage Users. See compliance_options() in app.py.
+    also_compliance_specialist = db.Column(db.Boolean, nullable=False, default=False)
+
     invite_token = db.Column(db.String(64), nullable=True)
     reset_token = db.Column(db.String(64), nullable=True)
     reset_token_expires = db.Column(db.DateTime, nullable=True)
@@ -493,6 +499,25 @@ class CommentLike(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     user = db.relationship("User")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+PRIORITY_CHOICES = [1, 2, 3, 4]
+PRIORITY_HELP_TEXT = "1 is highest priority, 4 is lowest priority"
+
+
+class PersonalRecordInfo(db.Model):
+    """Private, per-viewer notes/priority for an escalation - NOT shared with
+    anyone else, including other users who can also see the same record.
+    Only shown on the viewer's own list-view tabs. One row per
+    (user_id, escalation_id); uniqueness enforced in app.py (get-or-create),
+    not at the DB level, consistent with CommentLike above."""
+    __tablename__ = "personal_record_info"
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    escalation_id = db.Column(db.Integer, db.ForeignKey("escalations.id"), nullable=False)
+    notes = db.Column(db.Text, nullable=True)
+    priority = db.Column(db.Integer, nullable=True)  # 1-4, see PRIORITY_CHOICES
+    updated_at = db.Column(db.DateTime, nullable=True)
 
 
 class Attachment(db.Model):

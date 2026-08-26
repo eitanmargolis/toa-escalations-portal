@@ -7,7 +7,9 @@ If those env vars are not set (e.g. local dev), emails are printed to the
 console instead of sent, so the app still runs without failing.
 """
 import os
+import re
 import requests
+from html import unescape
 
 MS_TENANT_ID = os.environ.get("MS_TENANT_ID")
 MS_CLIENT_ID = os.environ.get("MS_CLIENT_ID")
@@ -90,23 +92,57 @@ def send_new_escalation_email(recipient_user, escalation, base_url):
     send_email(recipient_user.email, subject, body)
 
 
-def send_mention_email(mentioned_user, escalation, comment_author, base_url):
+def _comment_preview_html(comment_body, max_len=400):
+    """Plain-text preview of a Discussion comment's (already sanitized)
+    HTML body, truncated to max_len characters, wrapped in a styled
+    blockquote for embedding in a notification email. Returns "" if there's
+    no body to preview (e.g. an attachment-only comment)."""
+    if not comment_body:
+        return ""
+    # Turn block-level tags into line breaks before stripping the rest, so a
+    # multi-paragraph/bulleted comment doesn't collapse into one run-on line.
+    text = re.sub(r"<(p|div|li|br)\b[^>]*>", "\n", comment_body, flags=re.IGNORECASE)
+    text = re.sub(r"<[^>]+>", "", text)
+    text = unescape(text)
+    text = re.sub(r"\n{2,}", "\n", text).strip()
+    if not text:
+        return ""
+    truncated = len(text) > max_len
+    if truncated:
+        text = text[:max_len].rstrip() + "..."
+    # Escape for safe HTML embedding (the comment came from a rich-text
+    # editor, not raw user HTML, but this is still an extra safety net).
+    escaped = (
+        text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    ).replace("\n", "<br/>")
+    return f"""
+    <blockquote style="margin:12px 0;padding:10px 14px;border-left:3px solid #002c54;background:#f5f7f9;color:#333;font-style:italic;">
+    {escaped}
+    </blockquote>
+    """
+
+
+def send_mention_email(mentioned_user, escalation, comment_author, base_url, comment_body=None):
     link = f"{base_url}/escalations/{escalation.id}"
     subject = f"You were mentioned on Escalation #{escalation.id}"
+    preview = _comment_preview_html(comment_body)
     body = f"""
     <p>Hi {mentioned_user.first_name},</p>
     <p>{comment_author.full_name} mentioned you on Escalation #{escalation.id} ({escalation.candidate} - {escalation.facility}).</p>
+    {preview}
     <p><a href="{link}" style="display:inline-block;padding:10px 18px;background:#002c54;color:#ffffff;text-decoration:none;border-radius:6px;">View Escalation Record</a></p>
     """
     send_email(mentioned_user.email, subject, body)
 
 
-def send_new_comment_email(recipient_user, escalation, comment_author, base_url):
+def send_new_comment_email(recipient_user, escalation, comment_author, base_url, comment_body=None):
     link = f"{base_url}/escalations/{escalation.id}"
     subject = f"New Comment on Escalation #{escalation.id}"
+    preview = _comment_preview_html(comment_body)
     body = f"""
     <p>Hi {recipient_user.first_name},</p>
     <p>{comment_author.full_name} posted a new comment on Escalation #{escalation.id} ({escalation.candidate} - {escalation.facility}).</p>
+    {preview}
     <p><a href="{link}">Click HERE to view this Escalation Record</a></p>
     """
     send_email(recipient_user.email, subject, body)
