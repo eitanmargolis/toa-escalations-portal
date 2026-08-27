@@ -98,6 +98,13 @@
           <label>Compliance Manager</label>
           <input type="text" disabled value="{{ esc.compliance_manager.full_name if esc.compliance_manager else '-' }}">
         </div>
+        <div id="contractSpecialistWrapper">
+          <label>Contract Specialist<span id="contractSpecialistRequiredMark"> *</span></label>
+          <select name="contract_specialist_id" id="contractSpecialistField">
+            <option value="">-- Select --</option>
+            {% for u in contract_specialists %}<option value="{{ u.id }}" {{ 'selected' if esc.contract_specialist_id==u.id }}>{{ u.full_name }}</option>{% endfor %}
+          </select>
+        </div>
         <div>
           <label>Recruiter Manager</label>
           <input type="text" disabled value="{{ esc.recruiter_manager.full_name if esc.recruiter_manager else '-' }}">
@@ -360,6 +367,8 @@ const confidentialSectionWrapper = document.getElementById('confidentialSectionW
 const complianceWrapper = document.getElementById('complianceWrapper');
 const complianceField = document.getElementById('complianceField');
 const complianceManagerWrapper = document.getElementById('complianceManagerWrapper');
+const contractSpecialistWrapper = document.getElementById('contractSpecialistWrapper');
+const contractSpecialistField = document.getElementById('contractSpecialistField');
 const discussedField = document.getElementById('discussedField');
 const discussedRequiredMark = document.getElementById('discussedRequiredMark');
 const clinicalCallWrapper = document.getElementById('clinicalCallWrapper');
@@ -425,6 +434,19 @@ function syncSubtype(preserveCurrent) {
     complianceWrapper.style.display = '';
   }
   complianceManagerWrapper.style.display = (isCompliance || isPrestart) ? '' : 'none';
+
+  // Contract Specialist - shown and required only for Type = Contract.
+  const isContract = type === TYPE_CONTRACT;
+  if (isContract) {
+    contractSpecialistWrapper.style.display = '';
+    if (contractSpecialistField) contractSpecialistField.required = true;
+  } else {
+    contractSpecialistWrapper.style.display = 'none';
+    if (contractSpecialistField) {
+      contractSpecialistField.required = false;
+      contractSpecialistField.value = '';
+    }
+  }
 
   syncPayrollVisibility();
   clinicalLiaisonWrapper.style.display = isClinicalLiaisonApplicable ? '' : 'none';

@@ -26,7 +26,7 @@ from models import (
     db, User, Escalation, Comment, CommentLike, SavedReportView, Attachment, Mention, MigrationFlag,
     PersonalRecordInfo, PRIORITY_CHOICES, PRIORITY_HELP_TEXT,
     ROLES, STANDARD_ROLES, ROLE_FOR_RECRUITER_FIELD, ROLE_FOR_SALES_REP_FIELD, ROLE_FOR_COMPLIANCE_FIELD,
-    ROLE_FOR_PAYROLL_SPECIALIST_FIELD, ROLE_FOR_AC_FIELD, RETIRED_ROLE_COMPLIANCE_SPECIALIST,
+    ROLE_FOR_PAYROLL_SPECIALIST_FIELD, ROLE_FOR_AC_FIELD, ROLE_FOR_CONTRACT_FIELD, RETIRED_ROLE_COMPLIANCE_SPECIALIST,
     ESCALATION_TYPES, ALL_ESCALATION_TYPES_FOR_DISPLAY, RETIRED_ESCALATION_TYPES, CLINICAL_TYPES, SUBTYPES_BY_TYPE, YES_NO,
     STATUS_VALUES, OPEN_STATUSES, CLOSED_STATUSES, STATUS_VALUES_BY_TYPE,
     REQUIRED_SUBTYPE_TYPES, DISCUSSED_WITH_MANAGER_NOT_REQUIRED_TYPES,
@@ -313,6 +313,16 @@ def clinical_liaison_options():
     return User.query.filter(User.role.in_(["Director", "Admin"])).order_by(User.first_name).all()
 
 
+def contract_options():
+    return User.query.filter_by(role=ROLE_FOR_CONTRACT_FIELD).order_by(User.first_name).all()
+
+
+def contract_specialist_applicable(esc_type):
+    """Contract Specialist is shown/required only when Type = Contract -
+    hidden entirely (and never persisted) for every other Type."""
+    return esc_type == TYPE_CONTRACT
+
+
 def get_payroll_team_user():
     return User.query.filter(db.func.lower(User.email) == PAYROLL_TEAM_EMAIL).first()
 
@@ -448,7 +458,7 @@ def direct_report_ids_for(user):
 # direct report being the actual Compliance Specialist).
 MY_RECORDS_FIELDS = [
     "recruiter_id", "sales_rep_id", "compliance_specialist_id",
-    "clinical_liaison_id", "ac_id", "payroll_specialist_id",
+    "clinical_liaison_id", "ac_id", "payroll_specialist_id", "contract_specialist_id",
 ]
 
 
@@ -652,6 +662,7 @@ def new_escalation():
     payroll_specialists = payroll_specialist_options()
     clinical_liaisons = clinical_liaison_options()
     acs = ac_options()
+    contract_specialists = contract_options()
     all_users = User.query.order_by(User.first_name).all()
     sales_rep_ac_map = {u.id: u.assigned_ac_id for u in sales_reps}
 
@@ -659,7 +670,7 @@ def new_escalation():
         return render_template("escalation_form.html", esc=None, form=f,
                                 recruiters=recruiters, sales_reps=sales_reps, compliance_specialists=compliance_specialists,
                                 payroll_specialists=payroll_specialists, clinical_liaisons=clinical_liaisons,
-                                acs=acs, sales_rep_ac_map=sales_rep_ac_map,
+                                acs=acs, sales_rep_ac_map=sales_rep_ac_map, contract_specialists=contract_specialists,
                                 all_users=all_users,
                                 types=ESCALATION_TYPES, clinical_types=CLINICAL_TYPES, subtypes_by_type=SUBTYPES_BY_TYPE,
                                 yes_no=YES_NO, statuses=STATUS_VALUES,
@@ -688,6 +699,11 @@ def new_escalation():
         compliance_specialist_id = f.get("compliance_specialist_id") or None
         if compliance_specialist_hidden_for_type(esc_type):
             compliance_specialist_id = None
+
+        # Contract Specialist is only ever shown/persisted when Type = Contract.
+        contract_specialist_id = f.get("contract_specialist_id") or None
+        if not contract_specialist_applicable(esc_type):
+            contract_specialist_id = None
 
         payroll_applicable = payroll_specialist_applicable(esc_type, subtype)
 
@@ -783,6 +799,7 @@ def new_escalation():
             sales_rep_id=sales_rep_id,
             ac_id=ac_id,
             compliance_specialist_id=compliance_specialist_id,
+            contract_specialist_id=contract_specialist_id,
             payroll_specialist_id=f.get("payroll_specialist_id") or None if payroll_applicable else None,
             payroll_specialist_assigned=payroll_specialist_assigned,
             clinical_liaison_id=f.get("clinical_liaison_id") or None,
@@ -837,6 +854,8 @@ def new_escalation():
         # Assignment) (shown, but optional).
         if not compliance_specialist_hidden_for_type(esc.type) and esc.type != TYPE_PERSONAL and not esc.compliance_specialist_id:
             required_missing.append("Compliance Specialist")
+        if contract_specialist_applicable(esc.type) and not esc.contract_specialist_id:
+            required_missing.append("Contract Specialist")
         if subtype_required_for_type(esc.type) and not esc.subtype:
             required_missing.append("Subtype")
         if esc.type == TYPE_COMPLIANCE:
@@ -911,6 +930,8 @@ def new_escalation():
             recipients.add(esc.payroll_specialist)
         if esc.type in CLINICAL_LIAISON_TYPES:
             recipients.add(esc.clinical_liaison)
+        if contract_specialist_applicable(esc.type):
+            recipients.add(esc.contract_specialist)
         for u in recipients:
             if u:
                 send_new_escalation_email(u, esc, base_url())
@@ -921,7 +942,7 @@ def new_escalation():
     return render_template("escalation_form.html", esc=None, form={},
                             recruiters=recruiters, sales_reps=sales_reps, compliance_specialists=compliance_specialists,
                             payroll_specialists=payroll_specialists, clinical_liaisons=clinical_liaisons,
-                            acs=acs, sales_rep_ac_map=sales_rep_ac_map,
+                            acs=acs, sales_rep_ac_map=sales_rep_ac_map, contract_specialists=contract_specialists,
                             all_users=all_users,
                             types=ESCALATION_TYPES, clinical_types=CLINICAL_TYPES, subtypes_by_type=SUBTYPES_BY_TYPE,
                             yes_no=YES_NO, statuses=STATUS_VALUES,
@@ -994,6 +1015,7 @@ def my_closed_escalations():
             Escalation.compliance_specialist_id.in_(uids),
             Escalation.payroll_specialist_id.in_(uids),
             Escalation.ac_id.in_(uids),
+            Escalation.contract_specialist_id.in_(uids),
             Escalation.compliance_manager_id.in_(uids),
             Escalation.prestart_compliance_specialist_id.in_(uids),
             Escalation.prestart_compliance_manager_id.in_(uids),
@@ -1117,6 +1139,7 @@ def view_escalation(escalation_id):
     payroll_specialists = payroll_specialist_options()
     clinical_liaisons = clinical_liaison_options()
     acs = ac_options()
+    contract_specialists = contract_options()
     all_users = User.query.order_by(User.first_name).all()
     sales_rep_ac_map = {u.id: u.assigned_ac_id for u in sales_reps}
     can_manage = manager_or_admin(current_user)
@@ -1274,6 +1297,14 @@ def view_escalation(escalation_id):
             esc.compliance_specialist_id = None
         else:
             esc.compliance_specialist_id = f.get("compliance_specialist_id") or esc.compliance_specialist_id
+        if contract_specialist_applicable(new_type):
+            new_contract_specialist_id = f.get("contract_specialist_id") or esc.contract_specialist_id
+            if not new_contract_specialist_id:
+                flash("Please fill out required field: Contract Specialist", "error")
+                return redirect(url_for("view_escalation", escalation_id=escalation_id))
+            esc.contract_specialist_id = new_contract_specialist_id
+        else:
+            esc.contract_specialist_id = None
         if payroll_applicable:
             esc.payroll_specialist_id = f.get("payroll_specialist_id") or esc.payroll_specialist_id
             esc.payroll_specialist_assigned = f.get("payroll_specialist_assigned") or esc.payroll_specialist_assigned
@@ -1386,6 +1417,8 @@ def view_escalation(escalation_id):
                 status_recipients.add(esc.payroll_specialist)
             if esc.type in CLINICAL_LIAISON_TYPES:
                 status_recipients.add(esc.clinical_liaison)
+            if contract_specialist_applicable(esc.type):
+                status_recipients.add(esc.contract_specialist)
             for u in status_recipients:
                 if u:
                     send_status_changed_email(u, esc, new_status, base_url())
@@ -1397,7 +1430,7 @@ def view_escalation(escalation_id):
         "escalation_detail.html", esc=esc,
         recruiters=recruiters, sales_reps=sales_reps, compliance_specialists=compliance_specialists,
         payroll_specialists=payroll_specialists, clinical_liaisons=clinical_liaisons,
-        acs=acs, sales_rep_ac_map=sales_rep_ac_map,
+        acs=acs, sales_rep_ac_map=sales_rep_ac_map, contract_specialists=contract_specialists,
         all_users=all_users,
         # Item 7 (this batch): the Type dropdown on this page uses the LIVE
         # list only (ESCALATION_TYPES) - never ALL_ESCALATION_TYPES_FOR_DISPLAY

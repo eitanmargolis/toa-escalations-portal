@@ -81,6 +81,13 @@
       <label>Compliance Manager</label>
       <input type="text" disabled placeholder="Auto-set from Compliance Specialist's manager on save">
     </div>
+    <div id="contractSpecialistWrapper" style="display:none;">
+      <label>Contract Specialist<span id="contractSpecialistRequiredMark"> *</span></label>
+      <select name="contract_specialist_id" id="contractSpecialistField">
+        <option value="">-- Select --</option>
+        {% for u in contract_specialists %}<option value="{{ u.id }}">{{ u.full_name }}</option>{% endfor %}
+      </select>
+    </div>
     <div>
       <label>Recruiter Manager</label>
       <input type="text" disabled placeholder="Auto-set from Recruiter's manager on save">
@@ -244,6 +251,8 @@ const complianceField = document.getElementById('complianceField');
 const complianceRequiredMark = document.getElementById('complianceRequiredMark');
 const complianceWrapper = document.getElementById('complianceWrapper');
 const complianceManagerWrapper = document.getElementById('complianceManagerWrapper');
+const contractSpecialistField = document.getElementById('contractSpecialistField');
+const contractSpecialistWrapper = document.getElementById('contractSpecialistWrapper');
 const payrollSpecialistWrapper = document.getElementById('payrollSpecialistWrapper');
 const payrollSpecialistAssignedWrapper = document.getElementById('payrollSpecialistAssignedWrapper');
 const clinicalLiaisonWrapper = document.getElementById('clinicalLiaisonWrapper');
@@ -318,6 +327,17 @@ function syncSubtype() {
     complianceRequiredMark.style.display = isPersonal ? 'none' : '';
   }
   complianceManagerWrapper.style.display = (isCompliance || isPrestart) ? '' : 'none';
+
+  // Contract Specialist - shown and required only for Type = Contract.
+  const isContract = type === TYPE_CONTRACT;
+  if (isContract) {
+    contractSpecialistWrapper.style.display = '';
+    contractSpecialistField.required = true;
+  } else {
+    contractSpecialistWrapper.style.display = 'none';
+    contractSpecialistField.required = false;
+    contractSpecialistField.value = '';
+  }
 
   // Payroll Specialist section (dropdown + free-text Assigned box) - item 7c
   syncPayrollVisibility();

@@ -14,12 +14,12 @@ db = SQLAlchemy()
 # behavior is expanded visibility into their direct reports' records.
 ROLES = [
     "Admin", "Director", "Manager", "Recruiter", "Account Manager",
-    "Payroll", "Compliance", "AC",
+    "Payroll", "Compliance", "AC", "Contract",
 ]
 
 # Roles that are NOT Admin/Director - i.e. everyday portal users (identical page access)
 STANDARD_ROLES = [
-    "Recruiter", "Account Manager", "Payroll", "Compliance", "Manager", "AC",
+    "Recruiter", "Account Manager", "Payroll", "Compliance", "Manager", "AC", "Contract",
 ]
 
 # The "Compliance Specialist" role has been retired and merged into "Compliance"
@@ -34,6 +34,7 @@ ROLE_FOR_SALES_REP_FIELD = "Account Manager"
 ROLE_FOR_COMPLIANCE_FIELD = "Compliance"
 ROLE_FOR_PAYROLL_SPECIALIST_FIELD = "Payroll"
 ROLE_FOR_AC_FIELD = "AC"
+ROLE_FOR_CONTRACT_FIELD = "Contract"
 
 # Type values retired from the CREATE form's picklist AND (as of this batch,
 # item 7) fully retired from the detail/edit page's live Type dropdown too -
@@ -207,6 +208,7 @@ REPORT_FIELDS = [
     ("Sales Rep", "sales_rep_id"),
     ("AC", "ac_id"),
     ("Compliance Specialist", "compliance_specialist_id"),
+    ("Contract Specialist", "contract_specialist_id"),
     ("Recruiter Manager", "recruiter_manager_id"),
     ("Payroll Specialist", "payroll_specialist_id"),
     ("Payroll Specialist Assigned", "payroll_specialist_assigned"),
@@ -381,6 +383,14 @@ class Escalation(db.Model):
 
     compliance_specialist_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)  # not required for Clinical types
     compliance_specialist = db.relationship("User", foreign_keys=[compliance_specialist_id])
+
+    # Only shown/required when Type = Contract; hidden entirely (and not
+    # persisted) for every other Type. Options come from ROLE_FOR_CONTRACT_FIELD
+    # ("Contract") users only - see contract_options() in app.py. A Contract
+    # role user's visibility is scoped to only the records where they're set
+    # here (see MY_RECORDS_FIELDS in app.py).
+    contract_specialist_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    contract_specialist = db.relationship("User", foreign_keys=[contract_specialist_id])
 
     recruiter_manager_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     recruiter_manager = db.relationship("User", foreign_keys=[recruiter_manager_id])

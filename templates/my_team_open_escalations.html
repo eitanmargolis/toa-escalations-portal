@@ -4,7 +4,7 @@
 {% block content %}
 <h1>My Team's Open Escalations</h1>
 <p style="color:#6b7a86;">Escalations where one of your direct reports (per the Manager field on Manage Users) is the Recruiter, Sales Rep, Compliance Specialist, Clinical Liaison, AC, or Payroll Specialist, currently in Open, Pending Approval, or Clinical Acknowledged status. This does not include your own escalations - see My Open Escalations for those.</p>
-<p style="color:#6b7a86;font-size:13px;">Priority is personal to you - {{ priority_help }}. No one else can see what you set here.</p>
+<p style="color:#6b7a86;font-size:13px;">Priority and Notes are personal to you - {{ priority_help }}. No one else can see what you set here.</p>
 <div class="card">
   <table data-sortable>
     <thead>
@@ -16,6 +16,7 @@
         <th data-sort="text">Status</th>
         <th data-sort="num" title="{{ priority_help }}">Priority</th>
         <th data-sort="text">Danger of Cancelling</th>
+        <th>Notes</th>
         {% if current_user.role != "Recruiter" %}<th data-sort="text">Recruiter</th>{% endif %}
       </tr>
     </thead>
@@ -35,10 +36,13 @@
           </select>
         </td>
         <td>{{ e.danger_of_cancelling or '-' }}</td>
+        <td>
+          <input type="text" data-personal-notes data-escalation-id="{{ e.id }}" value="{{ info.notes if info and info.notes else '' }}" placeholder="Personal note..." style="width:160px;">
+        </td>
         {% if current_user.role != "Recruiter" %}<td>{{ e.recruiter.full_name if e.recruiter }}</td>{% endif %}
       </tr>
       {% else %}
-      <tr class="empty-row"><td colspan="8" style="color:#6b7a86;">No open escalations assigned to your direct reports.</td></tr>
+      <tr class="empty-row"><td colspan="9" style="color:#6b7a86;">No open escalations assigned to your direct reports.</td></tr>
       {% endfor %}
     </tbody>
   </table>
