@@ -1,8 +1,11 @@
 // Generic click-to-sort for list-view tables. Add data-sortable to a
-// <table>, and data-sort="text" or data-sort="num" to any <th> that should
-// be sortable. Optionally give a <td> a data-sort-value="..." attribute to
-// sort on something other than its visible text (e.g. a raw id/priority
-// number instead of "#12" or "-").
+// <table>. Each sortable <th> needs data-sort="text" or data-sort="num"
+// PLUS data-key="somekey" matching the data-key="somekey" attribute on the
+// corresponding <td> in every row - columns are matched by this key, not by
+// position, so a table is safe to sort correctly even if some rows render a
+// different number of conditional columns than others. Optionally give a
+// <td> a data-sort-value="..." attribute to sort on something other than
+// its visible text (e.g. a raw id/priority number instead of "#12" or "-").
 document.addEventListener("DOMContentLoaded", function () {
   document.querySelectorAll("table[data-sortable]").forEach(function (table) {
     var tbody = table.querySelector("tbody");
@@ -10,10 +13,10 @@ document.addEventListener("DOMContentLoaded", function () {
     var headers = Array.prototype.slice.call(table.querySelectorAll("th[data-sort]"));
     headers.forEach(function (th) {
       if (!th.dataset.label) th.dataset.label = th.textContent.trim();
+      var key = th.getAttribute("data-key");
       th.style.cursor = "pointer";
       th.title = "Click to sort";
       th.addEventListener("click", function () {
-        var cellIndex = Array.prototype.indexOf.call(th.parentNode.children, th);
         var type = th.getAttribute("data-sort");
         var asc = th.getAttribute("data-asc") !== "true";
         headers.forEach(function (h) {
@@ -27,13 +30,15 @@ document.addEventListener("DOMContentLoaded", function () {
           return !r.classList.contains("empty-row");
         });
         rows.sort(function (a, b) {
-          var aCell = a.children[cellIndex];
-          var bCell = b.children[cellIndex];
+          var aCell = key ? a.querySelector('[data-key="' + key + '"]') : null;
+          var bCell = key ? b.querySelector('[data-key="' + key + '"]') : null;
           var av = aCell ? (aCell.getAttribute("data-sort-value") || aCell.textContent.trim()) : "";
           var bv = bCell ? (bCell.getAttribute("data-sort-value") || bCell.textContent.trim()) : "";
           if (type === "num") {
-            av = parseFloat(av) || 0;
-            bv = parseFloat(bv) || 0;
+            av = parseFloat(av);
+            bv = parseFloat(bv);
+            if (isNaN(av)) av = asc ? Infinity : -Infinity;
+            if (isNaN(bv)) bv = asc ? Infinity : -Infinity;
             return asc ? av - bv : bv - av;
           }
           av = String(av).toLowerCase();

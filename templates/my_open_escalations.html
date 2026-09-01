@@ -9,39 +9,39 @@
   <table data-sortable>
     <thead>
       <tr>
-        <th data-sort="num">ID</th>
-        <th data-sort="text">Candidate</th>
-        <th data-sort="text">Facility</th>
-        <th data-sort="text">Type</th>
-        <th data-sort="text">Status</th>
-        <th data-sort="num" title="{{ priority_help }}">Priority</th>
-        <th data-sort="text">Danger of Cancelling</th>
+        <th data-sort="num" data-key="id">ID</th>
+        <th data-sort="text" data-key="candidate">Candidate</th>
+        <th data-sort="text" data-key="facility">Facility</th>
+        <th data-sort="text" data-key="type">Type</th>
+        <th data-sort="text" data-key="status">Status</th>
+        <th data-sort="num" data-key="priority" title="{{ priority_help }}">Priority</th>
+        <th data-sort="text" data-key="danger">Danger of Cancelling</th>
         <th>Notes</th>
-        {% if current_user.role == "Payroll" %}<th data-sort="text">Payroll Specialist Assigned</th>{% endif %}
-        {% if current_user.role != "Recruiter" %}<th data-sort="text">Recruiter</th>{% endif %}
+        {% if current_user.role == "Payroll" %}<th data-sort="text" data-key="payroll_assigned">Payroll Specialist Assigned</th>{% endif %}
+        {% if current_user.role != "Recruiter" %}<th data-sort="text" data-key="recruiter">Recruiter</th>{% endif %}
       </tr>
     </thead>
     <tbody>
       {% for e in escalations %}
       {% set info = personal_info.get(e.id) %}
       <tr onclick="window.location='{{ url_for('view_escalation', escalation_id=e.id) }}'" style="cursor:pointer;">
-        <td data-sort-value="{{ e.id }}">#{{ e.id }}</td>
-        <td>{{ e.candidate }}</td>
-        <td>{{ e.facility }}</td>
-        <td>{{ e.type }}</td>
-        <td>{{ b.status_badge(e.status) }}</td>
-        <td data-sort-value="{{ info.priority if info and info.priority else 5 }}">
+        <td data-key="id" data-sort-value="{{ e.id }}">#{{ e.id }}</td>
+        <td data-key="candidate">{{ e.candidate }}</td>
+        <td data-key="facility">{{ e.facility }}</td>
+        <td data-key="type">{{ e.type }}</td>
+        <td data-key="status">{{ b.status_badge(e.status) }}</td>
+        <td data-key="priority" data-sort-value="{{ info.priority if info and info.priority else '' }}">
           <select data-personal-priority data-escalation-id="{{ e.id }}" title="{{ priority_help }}">
             <option value="">-- None --</option>
             {% for p in priority_choices %}<option value="{{ p }}" {{ 'selected' if info and info.priority == p }}>{{ p }}</option>{% endfor %}
           </select>
         </td>
-        <td>{{ e.danger_of_cancelling or '-' }}</td>
+        <td data-key="danger">{{ e.danger_of_cancelling or '-' }}</td>
         <td>
           <input type="text" data-personal-notes data-escalation-id="{{ e.id }}" value="{{ info.notes if info and info.notes else '' }}" placeholder="Personal note..." style="width:160px;">
         </td>
-        {% if current_user.role == "Payroll" %}<td>{{ e.payroll_specialist_assigned or '-' }}</td>{% endif %}
-        {% if current_user.role != "Recruiter" %}<td>{{ e.recruiter.full_name if e.recruiter }}</td>{% endif %}
+        {% if current_user.role == "Payroll" %}<td data-key="payroll_assigned">{{ e.payroll_specialist_assigned or '-' }}</td>{% endif %}
+        {% if current_user.role != "Recruiter" %}<td data-key="recruiter">{{ e.recruiter.full_name if e.recruiter }}</td>{% endif %}
       </tr>
       {% else %}
       <tr class="empty-row"><td colspan="10" style="color:#6b7a86;">No open escalations assigned to you.</td></tr>

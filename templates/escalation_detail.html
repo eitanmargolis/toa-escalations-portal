@@ -269,6 +269,17 @@
         <div id="reportedToBonWrapper">
           <label><input type="checkbox" name="reported_to_bon" style="width:auto;" {{ 'checked' if esc.reported_to_bon }}> T reported to BON</label>
         </div>
+        <div id="newContractSentWrapper">
+          <label><input type="checkbox" name="new_contract_sent" id="newContractSentCheck" style="width:auto;" {{ 'checked' if esc.new_contract_sent }}> New Contract Sent</label>
+        </div>
+        <div id="newContractSentDateWrapper">
+          <label>New Contract Sent Date</label>
+          <input type="date" name="new_contract_sent_date" value="{{ esc.new_contract_sent_date or '' }}">
+        </div>
+        <div id="newContractSentTimeWrapper">
+          <label>New Contract Sent Time</label>
+          <input type="time" name="new_contract_sent_time" value="{{ esc.new_contract_sent_time or '' }}">
+        </div>
       </div>
 
       <p style="margin-top:20px;">
@@ -345,9 +356,12 @@ function computeCanEditStatus(type) {
   if (["Admin", "Director", "Manager"].includes(CURRENT_USER_ROLE)) return true;
   if (CURRENT_USER_ROLE === "Payroll" && type === TYPE_PAYROLL) return true;
   if (CURRENT_USER_ROLE === "Compliance" && type === TYPE_COMPLIANCE) return true;
+  // For Type = Contract, ANY Account Manager or Contract role user can edit
+  // Status (not just the specific Sales Rep/Contract Specialist on this record).
+  if (type === TYPE_CONTRACT && ["Account Manager", "Contract"].includes(CURRENT_USER_ROLE)) return true;
   // The specific Sales Rep assigned to THIS record (not just anyone with the
-  // Account Manager role) can edit Status for these three types.
-  if (ESC_SALES_REP_ID && CURRENT_USER_ID === ESC_SALES_REP_ID && [TYPE_PERSONAL, TYPE_PRESTART, TYPE_CONTRACT].includes(type)) return true;
+  // Account Manager role) can edit Status for these two types.
+  if (ESC_SALES_REP_ID && CURRENT_USER_ID === ESC_SALES_REP_ID && [TYPE_PERSONAL, TYPE_PRESTART].includes(type)) return true;
   return false;
 }
 const SUBTYPE_CLINICAL_CANCEL = "Clinical/Cancel";
@@ -400,6 +414,9 @@ const statusSelect = document.getElementById('statusSelect');
 const clinicalTeamSaveWrapper = document.getElementById('clinicalTeamSaveWrapper');
 const facilityResolutionWrapper = document.getElementById('facilityResolutionWrapper');
 const isTravelerCanceledWrapper = document.getElementById('isTravelerCanceledWrapper');
+const newContractSentWrapper = document.getElementById('newContractSentWrapper');
+const newContractSentDateWrapper = document.getElementById('newContractSentDateWrapper');
+const newContractSentTimeWrapper = document.getElementById('newContractSentTimeWrapper');
 
 function syncSubtype(preserveCurrent) {
   const type = typeField.value;
@@ -455,12 +472,12 @@ function syncSubtype(preserveCurrent) {
   const discussedRequired = !DISCUSSED_NOT_REQUIRED_TYPES.includes(type);
   discussedRequiredMark.style.display = discussedRequired ? '' : 'none';
 
-  clinicalCallWrapper.style.display = (isCompliance || isPayroll) ? 'none' : '';
+  clinicalCallWrapper.style.display = (isCompliance || isPayroll || isContract) ? 'none' : '';
   dangerWrapper.style.display = isCompliance ? 'none' : '';
   escalatedWrapper.style.display = isCompliance ? 'none' : '';
-  bestDayWrapper.style.display = (isCompliance || isPayroll) ? 'none' : '';
-  bestTimeWrapper.style.display = (isCompliance || isPayroll) ? 'none' : '';
-  timeZoneWrapper.style.display = (isCompliance || isPayroll) ? 'none' : '';
+  bestDayWrapper.style.display = (isCompliance || isPayroll || isContract) ? 'none' : '';
+  bestTimeWrapper.style.display = (isCompliance || isPayroll || isContract) ? 'none' : '';
+  timeZoneWrapper.style.display = (isCompliance || isPayroll || isContract) ? 'none' : '';
 
   coastDeadlineWrapper.style.display = isCompliance ? '' : 'none';
   facilityDeadlineWrapper.style.display = isCompliance ? '' : 'none';
@@ -471,11 +488,16 @@ function syncSubtype(preserveCurrent) {
   dateToBePaidWrapper.style.display = isPayroll ? '' : 'none';
 
   // Item 4 (this batch): these 3 Resolution fields are removed entirely for
-  // Payroll & Timekeeping. Not required fields, no server-side nulling -
-  // purely a visibility change, existing data is preserved either way.
-  clinicalTeamSaveWrapper.style.display = isPayroll ? 'none' : '';
-  facilityResolutionWrapper.style.display = isPayroll ? 'none' : '';
-  isTravelerCanceledWrapper.style.display = isPayroll ? 'none' : '';
+  // Payroll & Timekeeping AND Contract. Not required fields, no server-side
+  // nulling - purely a visibility change, existing data is preserved either way.
+  clinicalTeamSaveWrapper.style.display = (isPayroll || isContract) ? 'none' : '';
+  facilityResolutionWrapper.style.display = (isPayroll || isContract) ? 'none' : '';
+  isTravelerCanceledWrapper.style.display = (isPayroll || isContract) ? 'none' : '';
+
+  // "New Contract Sent" (checkbox + date + time) is shown ONLY for Type = Contract.
+  newContractSentWrapper.style.display = isContract ? '' : 'none';
+  newContractSentDateWrapper.style.display = isContract ? '' : 'none';
+  newContractSentTimeWrapper.style.display = isContract ? '' : 'none';
 
   // Sales Rep / AC (item 3): hidden for Payroll & Timekeeping with Subtype
   // Paycheck Error / Late / Reimbursements only.

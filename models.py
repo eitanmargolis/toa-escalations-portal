@@ -162,10 +162,11 @@ STATUS_VALUES = [
 STATUS_VALUES_BY_TYPE = {
     TYPE_COMPLIANCE: ["Open", "Closed - Resolved", "Closed - Canceled"],
     TYPE_PAYROLL: ["Open", "Investigating", "Information Needed", "Closed - Resolved"],
+    TYPE_CONTRACT: ["Open", "Information Needed", "New Contract Sent", "Closed"],
 }
 
 # Statuses that keep a record in "My Open Escalations"
-CLOSED_STATUSES = ["Closed - Resolved", "Closed - Canceled"]
+CLOSED_STATUSES = ["Closed - Resolved", "Closed - Canceled", "Closed"]
 OPEN_STATUSES = [s for s in STATUS_VALUES if s not in CLOSED_STATUSES]
 
 BEST_TIME_SLOTS = [
@@ -243,6 +244,9 @@ REPORT_FIELDS = [
     ("Clinical Team Save", "clinical_team_save"),
     ("Facility Resolution", "facility_resolution"),
     ("Is Traveler Canceled?", "is_traveler_canceled"),
+    ("New Contract Sent", "new_contract_sent"),
+    ("New Contract Sent Date", "new_contract_sent_date"),
+    ("New Contract Sent Time", "new_contract_sent_time"),
 ]
 
 
@@ -450,6 +454,14 @@ class Escalation(db.Model):
     clinical_team_save = db.Column(db.Boolean, default=False)
     facility_resolution = db.Column(db.Text, nullable=True)
     is_traveler_canceled = db.Column(db.String(10), nullable=True)
+
+    # Contract-type only Resolution field: "New Contract Sent" checkbox with a
+    # date + time of when it was sent. Clinical Team Save / Facility
+    # Resolution / Is Traveler Canceled above are hidden entirely for Type =
+    # Contract (see contract_specialist_applicable()-style gating in app.py).
+    new_contract_sent = db.Column(db.Boolean, default=False)
+    new_contract_sent_date = db.Column(db.String(20), nullable=True)  # date string
+    new_contract_sent_time = db.Column(db.String(20), nullable=True)  # time string
 
     # DNR fields - Clinical types only
     dnr_facility = db.Column(db.Boolean, default=False)

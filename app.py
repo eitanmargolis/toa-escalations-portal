@@ -152,9 +152,12 @@ def status_editable_by(user, esc_type, esc_sales_rep_id=None):
     - Admin, Director, and the scoped "Manager" role: always, any type.
     - Payroll role: only when the escalation's Type is Payroll & Timekeeping.
     - Compliance role: only when the escalation's Type is Compliance & Credentialing.
+    - For Type = Contract: ANY user with role Account Manager or Contract
+      (not just the specific Sales Rep/Contract Specialist assigned to this
+      record) can edit Status.
     - The specific Sales Rep assigned to THIS record (esc_sales_rep_id, not
       just anyone with the Account Manager role): only when Type is Personal
-      (On Assignment), Pre-Start, or Contract.
+      (On Assignment) or Pre-Start.
     - Everyone else: never.
     """
     if user.role in ("Admin", "Director", "Manager"):
@@ -163,7 +166,9 @@ def status_editable_by(user, esc_type, esc_sales_rep_id=None):
         return True
     if user.role == "Compliance" and esc_type == TYPE_COMPLIANCE:
         return True
-    if esc_sales_rep_id and user.id == esc_sales_rep_id and esc_type in (TYPE_PERSONAL, TYPE_PRESTART, TYPE_CONTRACT):
+    if esc_type == TYPE_CONTRACT and user.role in ("Account Manager", "Contract"):
+        return True
+    if esc_sales_rep_id and user.id == esc_sales_rep_id and esc_type in (TYPE_PERSONAL, TYPE_PRESTART):
         return True
     return False
 
@@ -733,6 +738,14 @@ def new_escalation():
             best_time_to_call = None
             time_zone = None
 
+        # Fields hidden entirely for Contract - Clinical Call Required,
+        # Best Day/Time to Call Traveler, Time Zone.
+        if esc_type == TYPE_CONTRACT:
+            clinical_call_required = None
+            best_day_to_call = None
+            best_time_to_call = None
+            time_zone = None
+
         # DNR fields - Clinical types and Personal (On Assignment) (item 1)
         if esc_type in CLINICAL_LIAISON_DNR_TYPES:
             dnr_facility = bool(f.get("dnr_facility"))
@@ -1190,6 +1203,32 @@ def view_escalation(escalation_id):
             new_best_time = None
             new_time_zone = None
 
+        # Fields hidden entirely for Contract - Clinical Call Required,
+        # Best Day/Time to Call Traveler, Time Zone.
+        if new_type == TYPE_CONTRACT:
+            new_clinical_call_required = None
+            new_best_day = None
+            new_best_time = None
+            new_time_zone = None
+
+        # Resolution section: Clinical Team Save / Facility Resolution / Is
+        # Traveler Canceled are removed entirely for Contract; "New Contract
+        # Sent" (checkbox + date + time) is shown ONLY for Contract.
+        if new_type == TYPE_CONTRACT:
+            new_clinical_team_save = False
+            new_facility_resolution = None
+            new_is_traveler_canceled = None
+            new_new_contract_sent = bool(f.get("new_contract_sent"))
+            new_new_contract_sent_date = f.get("new_contract_sent_date") or None
+            new_new_contract_sent_time = f.get("new_contract_sent_time") or None
+        else:
+            new_clinical_team_save = bool(f.get("clinical_team_save"))
+            new_facility_resolution = f.get("facility_resolution") or None
+            new_is_traveler_canceled = f.get("is_traveler_canceled") or None
+            new_new_contract_sent = False
+            new_new_contract_sent_date = None
+            new_new_contract_sent_time = None
+
         # Status field: who can edit it depends on role AND (for Payroll/
         # Compliance) the escalation's current Type - see status_editable_by().
         # Permission is evaluated against old_type (the type as the page was
@@ -1341,9 +1380,12 @@ def view_escalation(escalation_id):
         esc.coast_dnr = new_coast_dnr
         esc.reported_to_bon = new_reported_to_bon
         esc.complaint_outcome = f.get("complaint_outcome") or None
-        esc.clinical_team_save = bool(f.get("clinical_team_save"))
-        esc.facility_resolution = f.get("facility_resolution") or None
-        esc.is_traveler_canceled = f.get("is_traveler_canceled") or None
+        esc.clinical_team_save = new_clinical_team_save
+        esc.facility_resolution = new_facility_resolution
+        esc.is_traveler_canceled = new_is_traveler_canceled
+        esc.new_contract_sent = new_new_contract_sent
+        esc.new_contract_sent_date = new_new_contract_sent_date
+        esc.new_contract_sent_time = new_new_contract_sent_time
 
         # Confidential Information - Manager/Admin (Director/Admin) only, AND
         # only for Clinical - Traveler/Client Initiated, Personal (On

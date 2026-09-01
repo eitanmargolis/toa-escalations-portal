@@ -13,31 +13,31 @@
   <table data-sortable>
     <thead>
       <tr>
-        <th data-sort="num">ID</th>
-        <th data-sort="text">Candidate</th>
-        <th data-sort="text">Facility</th>
-        <th data-sort="text">Type</th>
-        <th data-sort="text">Status</th>
-        <th data-sort="num" title="{{ priority_help }}">Priority</th>
-        {% if current_user.role != "Recruiter" %}<th data-sort="text">Recruiter</th>{% endif %}
+        <th data-sort="num" data-key="id">ID</th>
+        <th data-sort="text" data-key="candidate">Candidate</th>
+        <th data-sort="text" data-key="facility">Facility</th>
+        <th data-sort="text" data-key="type">Type</th>
+        <th data-sort="text" data-key="status">Status</th>
+        <th data-sort="num" data-key="priority" title="{{ priority_help }}">Priority</th>
+        {% if current_user.role != "Recruiter" %}<th data-sort="text" data-key="recruiter">Recruiter</th>{% endif %}
       </tr>
     </thead>
     <tbody>
       {% for e in escalations %}
       {% set info = personal_info.get(e.id) %}
       <tr onclick="window.location='{{ url_for('view_escalation', escalation_id=e.id) }}'" style="cursor:pointer;">
-        <td data-sort-value="{{ e.id }}">#{{ e.id }}</td>
-        <td>{{ e.candidate }}</td>
-        <td>{{ e.facility }}</td>
-        <td>{{ e.type }}</td>
-        <td>{{ b.status_badge(e.status) }}</td>
-        <td data-sort-value="{{ info.priority if info and info.priority else 5 }}">
+        <td data-key="id" data-sort-value="{{ e.id }}">#{{ e.id }}</td>
+        <td data-key="candidate">{{ e.candidate }}</td>
+        <td data-key="facility">{{ e.facility }}</td>
+        <td data-key="type">{{ e.type }}</td>
+        <td data-key="status">{{ b.status_badge(e.status) }}</td>
+        <td data-key="priority" data-sort-value="{{ info.priority if info and info.priority else '' }}">
           <select data-personal-priority data-escalation-id="{{ e.id }}" title="{{ priority_help }}">
             <option value="">-- None --</option>
             {% for p in priority_choices %}<option value="{{ p }}" {{ 'selected' if info and info.priority == p }}>{{ p }}</option>{% endfor %}
           </select>
         </td>
-        {% if current_user.role != "Recruiter" %}<td>{{ e.recruiter.full_name if e.recruiter }}</td>{% endif %}
+        {% if current_user.role != "Recruiter" %}<td data-key="recruiter">{{ e.recruiter.full_name if e.recruiter }}</td>{% endif %}
       </tr>
       {% else %}
       <tr class="empty-row"><td colspan="7" style="color:#6b7a86;">No {{ sub }} mentions.</td></tr>

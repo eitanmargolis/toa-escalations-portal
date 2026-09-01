@@ -354,11 +354,11 @@ function syncSubtype() {
   clinicalCallWrapper.style.display = isCompliance ? 'none' : '';
   dangerWrapper.style.display = isCompliance ? 'none' : '';
   escalatedWrapper.style.display = isCompliance ? 'none' : '';
-  bestDayWrapper.style.display = (isCompliance || isPayroll) ? 'none' : '';
-  bestTimeWrapper.style.display = (isCompliance || isPayroll) ? 'none' : '';
-  timeZoneWrapper.style.display = (isCompliance || isPayroll) ? 'none' : '';
-  // Additionally hidden entirely for Payroll & Timekeeping (item 4e)
-  if (isPayroll) clinicalCallWrapper.style.display = 'none';
+  bestDayWrapper.style.display = (isCompliance || isPayroll || isContract) ? 'none' : '';
+  bestTimeWrapper.style.display = (isCompliance || isPayroll || isContract) ? 'none' : '';
+  timeZoneWrapper.style.display = (isCompliance || isPayroll || isContract) ? 'none' : '';
+  // Additionally hidden entirely for Payroll & Timekeeping (item 4e) and Contract
+  if (isPayroll || isContract) clinicalCallWrapper.style.display = 'none';
 
   // Compliance & Credentialing detail fields (item 2e)
   coastDeadlineWrapper.style.display = isCompliance ? '' : 'none';
